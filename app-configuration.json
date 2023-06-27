@@ -1,4 +1,5 @@
 {
-    "sdk": "MoveApps R SDK",
-    "year": 2006
+    "travelcut": 2,
+    "rooststart": 18,
+    "roostend": 7
 }
