@@ -62,7 +62,7 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
   
   # Generate necessary data
   data$dist_m <- as.vector(move2::mt_distance(data))
-  data$kmph <- as.vector(move2::mt_speed(data))
+  data$kmph <- move2::mt_speed(data) %>% units::set_units("km/h") %>% as.vector()
   #data$timediff_hrs <- lubridate::mt_time_lags(data)
   data %<>% 
     arrange(mt_track_id(data), mt_time(data)) %>%

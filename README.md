@@ -7,10 +7,10 @@ Github repository: *github.com/callumjclarke/Name-of-App* *(the link to the repo
 ## Description
 This MoveApp applies a simple behavioural classification model to bird data. It classifies behaviour into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. Subdivision of these four behaviours assists in clustering processes. 
 
-Although this App by default uses a standardised model trained on Gyps Africanus vulture data, the option is provided to upload models trained using data specific to the animals in the input data. This MoveApp can be generated using the `speedtimefit` MoveApp and uploaded manually. 
+Although this App by default uses a standardised model trained on Gyps Africanus vulture data, the option is provided to upload models trained using data specific to the animals in the input data. This model can be generated using the `Fit Speed-as-Time-of-Day Model` MoveApp and uploaded manually. 
 
 ## Documentation
-*Enter here a detailed description of your App. What is it intended to be used for. Which steps of analyses are performed and how. Please be explicit about any detail that is important for use and understanding of the App and its outcomes.*
+
 
 ### Input data
 *Indicate which type of input data the App requires. Currently only R objects of class `MoveStack` can be used. This will be extend in the future.*
