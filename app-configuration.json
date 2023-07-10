@@ -1,5 +1,8 @@
+// classify
+// appspec.json
+
 {
-    "travelcut": 2,
+    "travelcut": 3,
     "rooststart": 18,
     "roostend": 7
 }

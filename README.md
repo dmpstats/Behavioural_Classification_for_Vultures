@@ -2,10 +2,12 @@
 
 MoveApps
 
-Github repository: *github.com/yourAccount/Name-of-App* *(the link to the repository where the code of the app can be found must be provided)*
+Github repository: *github.com/callumjclarke/Name-of-App* *(the link to the repository where the code of the app can be found must be provided)*
 
 ## Description
-*Enter here the short description of the App that might also be used when filling out the description when submitting the App to Moveapps. This text is directly presented to Users that look through the list of Apps when compiling Workflows.*
+This MoveApp applies a simple behavioural classification model to bird data. It classifies behaviour into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. Subdivision of these four behaviours assists in clustering processes. 
+
+Although this App by default uses a standardised model trained on Gyps Africanus vulture data, the option is provided to upload models trained using data specific to the animals in the input data. This MoveApp can be generated using the `speedtimefit` MoveApp and uploaded manually. 
 
 ## Documentation
 *Enter here a detailed description of your App. What is it intended to be used for. Which steps of analyses are performed and how. Please be explicit about any detail that is important for use and understanding of the App and its outcomes.*

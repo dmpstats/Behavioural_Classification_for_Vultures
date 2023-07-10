@@ -13,9 +13,14 @@ library('spam')
 # one can use the function from the logger.R file:
 # logger.fatal(), logger.error(), logger.warn(), logger.info(), logger.debug(), logger.trace()
 
+`%!in%` <- Negate(`%in%`) # 'Not In' function
+
 # Showcase injecting app setting (parameter `year`)
 rFunction = function(data, rooststart, roostend, travelcut, second_stage_model = NULL) {
 
+
+  # Prepare Second-Stage Models --------------------------------------------------------------------------------------------
+  
   # Call model file, if provided:
   modelPath <- paste0(getAppFilePath("second_stage_model", fallbackToProvidedFiles = TRUE), "modelfit.rds")
   providedModels <- readRDS(modelPath)
@@ -25,7 +30,7 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
     logger.warn(providedModels)
     } else {
     nomodels <- FALSE
-    logger.info(paste0("Models provided for tags ", names(providedModels), ". Proceeding with classification"))
+    logger.info(paste0("Models provided for tags ", toString(names(providedModels)), ". Proceeding with classification"))
   }
   
   # Call standard classification model file, for all IDs not included in the above file:
@@ -34,10 +39,8 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
   
   
   
-  # ------------
-  # 1. Check input data is in correct format
-  # ------------
-  
+  # Check Input Data ----------------------------------------------------------------------------------------------
+
   if(nrow(data) == 0) {
     logger.warn("Input data is empty. Returning input.")
     return(data)}
@@ -55,19 +58,19 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
   logger.info("Input is in correct format. Proceeding with first-stage classification for all IDs")
   
   
-  # ------------
-  # 2. Perform general classification
-  # ------------
+  # First-Stage Classification --------------------------------------------------------------------------------------
   
-  
+  # Generate necessary data
+  data$dist_m <- as.vector(move2::mt_distance(data))
+  data$kmph <- as.vector(move2::mt_speed(data))
+  #data$timediff_hrs <- lubridate::mt_time_lags(data)
   data %<>% 
     arrange(mt_track_id(data), mt_time(data)) %>%
     # distinct(timestamp, .keep_all = TRUE) %>%
-    
     mutate(
-      dist_m = sqrt((x - lag(x, default = NA))^2 + (y - lag(y, default = NA))^2),
-      timediff_hrs = as.numeric(difftime(mt_time(data), lag(mt_time(data), default = mt_time(data)[1]), units = "hours")), 
-      kmph = dist_m/c(timediff_hrs*1000), 
+      #dist_m = sqrt((x - lag(x, default = NA))^2 + (y - lag(y, default = NA))^2),
+      timediff_hrs =   as.numeric(difftime(mt_time(data), lag(mt_time(data), default = mt_time(data)[1]), units = "hours")), 
+      #kmph = move2::mt_speed(data),
       hour = lubridate::hour(mt_time(data))
     ) 
   
@@ -82,48 +85,49 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
         kmph < travelcut & data.table::between(hour, roostend, rooststart, incbounds = FALSE)  ~ "SResting",
         kmph > travelcut                                            ~ "STravelling",
         TRUE                                                    ~ "Unknown"
-      )
-    )  %>%
-    mutate(stationary = case_when(
-      as.vector(dist_m) < travelcut & between(hour(timestamp), roostend, rooststart) ~ 1,
-      TRUE ~ 0
-    ))
-  
+      ),
+      stationary = ifelse(behav=="STravelling", 0, 1)
+    )
+    # )  %>%
+    # 
+    # mutate(stationary = case_when(
+    #                     stationary = ifelse(behav=="STravelling", 0, 1), 
+    # 
+    #   as.vector(dist_m) < travelcut & between(hour(mt_time(.)), roostend, rooststart) ~ 1,
+    #   TRUE ~ 0
+    # ))
+    # 
   
   
   logger.info("First stage classification complete")
   
-  # Debug
-  print(table(data$behav))
   
-  
-  # ------------
-  # 3. Accelerometer Data
-  # ------------
+  # Accelerometer Data -----------------------------------------------------------------------------------------------
   
   # Accelerometer operations will go here
   # Ignoring in first instance for Savannah tag test
   #}
   
   
-  # ------------
-  # 4. Second-stage updating (if data available)
-  # ------------
+  # Second-Stage Classification ----------------------------------------------------------------------------------
   
   
   # We fit the second-stage model for each animal, and then re-stack the data into a move2 object
   newdat <- list()
   
-  
+
   for (tag in unique(mt_track_id(data))) {
     
-    # If there is no data for this bird, skip its second-stage
+    # If there is not enough data for this bird, skip its second-stage
     birddat <- filter_track_data(data, .track_id = tag)
-    if(nrow(birddat) == 0) {
-      logger.info(paste0("No data exists for ID ", tag, " with associated model. Skipping second-stage classification"))
+    if(nrow(birddat) < 10) {
+      logger.info(paste0("Insufficient data exists for ID ", tag, " with associated model. Skipping second-stage classification"))
       next}
     
     logger.info(paste0("Beginning second-stage classification for ID ", tag))
+    
+    
+    ## Calling model ==========================================================================================
     
     # Retrieve model
     if (tag %in% names(providedModels) & nomodels == FALSE) {
@@ -136,6 +140,8 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
     }
     
     
+    ## Indexing =============================================================================================
+    
     # If indexes aren't already added by preprocessing MoveApp, include them (and remove again later)
     if("index" %!in% colnames(birddat)) {
       removelater <- TRUE
@@ -144,6 +150,9 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
       ) %>%
         select(any_of(c("index", "behav", "stationary", "hourmin", "kmph", "yearmonthday", mt_track_id_column(birddat), mt_time_column(birddat))))
     } else {removelater <- FALSE}
+    
+    
+    ## Cumulative stationary time =========================================================================
     
     #' ~~~ Calculate cumulative time spent stationary
     birddat %<>%
@@ -160,6 +169,9 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
         cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
         cumtimestat_pctl_BC = 1 - ecdf(cumtimestat)(cumtimestat)                                               # Correct calculation?
       )
+    
+    
+    ## Movement reclassification ================================================================================
     
     x_values <- sort(unique(birddat$hourmin))
     b <- cbind(rep(1, length(x_values)), bs(x_values, 
@@ -189,7 +201,7 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
       #     leading to pairwise comparisons with the vector on the left-hand side. Don't think this was the 
       #     intention in the first place. The amended code simply compares the predicted draws against one speed value at time
       #     
-      empPval[i]<- length(which(predint[ which(x_values==data$hourmin[i]), ] < birddat$kmph[data$hourmin==data$hourmin[i] & data$yearmonthday==data$yearmonthday[i]]))/1000
+      empPval[i]<- length(which(predint[ which(x_values==birddat$hourmin[i]), ] < birddat$kmph[birddat$hourmin==birddat$hourmin[i] & birddat$yearmonthday==birddat$yearmonthday[i]]))/1000
     }
     
     
@@ -207,6 +219,8 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
   }
   
   
+  # Return data to move2 object -----------------------------------------------------------------------------------------------
+  
   # Rejoin move2 objects into classified data:
   logger.info("All second-stage classifications complete. Re-stacking to move2 object")
   updateddata <- move2::mt_stack(newdat)
@@ -216,10 +230,7 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
     updateddata %<>% select(-index)
   }
   
-  # Debug
-  print(table(updateddata$behav))
-  
-  
+
   
   # provide my result to the next app in the MoveApps workflow
   result <- updateddata
