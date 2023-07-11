@@ -45,20 +45,32 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
     logger.warn("Input data is empty. Returning input.")
     return(data)}
   
-  needcols <- c("timestamp", "x", "y")
-  
-  if(!all(needcols %in% colnames(data))) {
-    missingcols <- which(needcols %!in% colnames(data))
-    logger.fatal(paste0("Missing essential data columns: ", toString(needcols[missingcols])))
-    logger.fatal("Input data is not in correct format. Use 'preprocessing' MoveApp before this step in the workflow. Returning input")
+  if(!all(between(c(rooststart, roostend), 0, 24))) {
+    logger.fatal("Start or end of roosting hours is not a valid hour. Returning input - please use valid settings")
     return(data)
   }
   
+  if(rooststart < roostend) {
+    logger.warn("This MoveApp is not yet optimised for nocturnal species. Classifications will be inaccurate")
+  }
   
-  logger.info("Input is in correct format. Proceeding with first-stage classification for all IDs")
-  
+  if(travelcut <=  0 | !is.double(travelcut)) {
+    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
+    return(data)
+  }
+
+  logger.trace("Input is in correct format. Proceeding with first-stage classification for all IDs")
+
   
   # First-Stage Classification --------------------------------------------------------------------------------------
+  
+  needcols <- c("hourmin", "yearmonthday")
+  if(!all(needcols %in% colnames(data))) {
+    data %<>% dplyr::mutate(
+      hourmin = hour(mt_time(.)) + minute(mt_time(.))/60 + second(mt_time(.))/3600,
+      yearmonthday = stringr::str_replace_all(stringr::str_sub(lubridate::date(mt_time(data)), 1, 10), "-", "")
+    )
+  }
   
   # Generate necessary data
   data$dist_m <- as.vector(move2::mt_distance(data))
@@ -88,15 +100,7 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
       ),
       stationary = ifelse(behav=="STravelling", 0, 1)
     )
-    # )  %>%
-    # 
-    # mutate(stationary = case_when(
-    #                     stationary = ifelse(behav=="STravelling", 0, 1), 
-    # 
-    #   as.vector(dist_m) < travelcut & between(hour(mt_time(.)), roostend, rooststart) ~ 1,
-    #   TRUE ~ 0
-    # ))
-    # 
+s
   
   
   logger.info("First stage classification complete")
@@ -138,18 +142,6 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
       logger.warn(paste0("No model has been fitted to ID ", tag, " . Applying fallback model for Gyps Africanus vultures"))
       fit <- standardModel
     }
-    
-    
-    ## Indexing =============================================================================================
-    
-    # If indexes aren't already added by preprocessing MoveApp, include them (and remove again later)
-    if("index" %!in% colnames(birddat)) {
-      removelater <- TRUE
-      birddat %<>% mutate(
-        index = paste0(mt_track_id(birddat), " ", mt_time(birddat))
-      ) %>%
-        select(any_of(c("index", "behav", "stationary", "hourmin", "kmph", "yearmonthday", mt_track_id_column(birddat), mt_time_column(birddat))))
-    } else {removelater <- FALSE}
     
     
     ## Cumulative stationary time =========================================================================
@@ -225,10 +217,7 @@ rFunction = function(data, rooststart, roostend, travelcut, second_stage_model =
   logger.info("All second-stage classifications complete. Re-stacking to move2 object")
   updateddata <- move2::mt_stack(newdat)
   
-  # Remove index if not present at start
-  if(removelater == TRUE) {
-    updateddata %<>% select(-index)
-  }
+
   
 
   

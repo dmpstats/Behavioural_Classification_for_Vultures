@@ -22,7 +22,7 @@
     },
     {
       "id": "travelcut",
-      "name": "Upper bound for 'stationary' beahviour",
+      "name": "Upper speed bound for 'stationary' beahviour",
       "description": "Insert the upper cutoff for behaviour to be classified as 'stationary'. ",
       "defaultValue": 100,
       "type": "DOUBLE"

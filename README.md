@@ -1,41 +1,65 @@
-# Name of App *(Give your app a short and informative title. Please adhere to our convention of Title Case without hyphens (e.g. My New App))*
+# Behavioural Classification for Avian Species
 
 MoveApps
 
-Github repository: *github.com/callumjclarke/Name-of-App* *(the link to the repository where the code of the app can be found must be provided)*
+Github repository: *github.com/callumjclarke/Behavioural_Classification_for_Avian_Species*
 
 ## Description
-This MoveApp applies a simple behavioural classification model to bird data. It classifies behaviour into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. Subdivision of these four behaviours assists in clustering processes. 
 
-Although this App by default uses a standardised model trained on Gyps Africanus vulture data, the option is provided to upload models trained using data specific to the animals in the input data. This model can be generated using the `Fit Speed-as-Time-of-Day Model` MoveApp and uploaded manually. 
+This MoveApp applies a simple behavioural classification model to bird data. It classifies behaviour into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. Subdivision of these four behaviours assists in clustering processes.
+
+Although this App by default uses a standardised model trained on *Gyps africanus* vulture data, the option is provided to upload models trained using data specific to the animals in the input data. This model can be generated using the `Fit Speed-as-Time-of-Day Model` MoveApp and uploaded manually.
 
 ## Documentation
 
+This MoveApp is designed primarily for use with carcass-scavenging birds of prey. Provided models are based on *Gyps africanus* (white-backed vulture) data; if applying this MoveApp to data related to a different species, it is strongly recommended that you use the **Fit Speed-as-Time-of-Day Model** MoveApp to generate suitable models.
+
+Behavioural classification is performed on GPS data only. The first stage of classification is based on speed (calculated using the lagged event), and predicts one of three behaviours:
+
+-   Speed below the travellinng threshold and timestamp within roosting hours: `Roosting`
+
+-   Speed below the travelling threshold and timestamp outside of roosting hours: `Resting`
+
+-   Speed above the travelling threshold: `Travelling`
+
+No `Feeding` behaviour is predicted within the first stage of classification.
+
+The second stage of classification calls the (provided *or* uploaded `Fit Speed-as-Time-of-Day` models and calculates cumulative runs of stationary behaviours (`Resting` and `Roosting`). Reclassification is performed to generate `Feeding` behaviour:
+
+-   Points within the lowest 5 percentiles of predicted movement based on time of day are reclassified as `Feeding`
+
+-   Points within the highest 5 percentiles of time spent stationary are reclassified as `Feeding`
 
 ### Input data
-*Indicate which type of input data the App requires. Currently only R objects of class `MoveStack` can be used. This will be extend in the future.*
 
-*Example*: MoveStack in Movebank format
+Move2 location object
 
 ### Output data
-*Indicate which type of output data the App produces to be passed on to subsequent apps. Currently only R objects of class `MoveStack` can be used. This will be extend in the future. In case the App does not pass on any data (e.g. a shiny visualization app), it can be also indicated here that no output is produced to be used in subsequent apps.*
 
-*Example:* MoveStack in Movebank format
+Move2 location object
 
 ### Artefacts
-*If the App creates artefacts (e.g. csv, pdf, jpeg, shapefiles, etc), please list them here and describe each.*
 
-*Example:* `rest_overview.csv`: csv-file with Table of all rest site properties
+*None.*
 
-### Settings 
-*Please list and define all settings/parameters that the App requires to be set by the App user, if necessary including their unit.*
+### Settings
 
-*Example:* `Radius of resting site` (radius): Defined radius the animal has to stay in for a given duration of time for it to be considered resting site. Unit: `metres`.
+`Start of Roosting Hours` (integer): The predicted hour beyond which this species will be roosting.
+
+`End of Roosting Hours` (integer): The predicted hour at which the species' night-roost will end.
+
+`Upper speed bound for Stationary Behaviour`: The speed (in km/h) beyond which this species is assumed to be travelling. Default is 3 km/h.
 
 ### Most common errors
-*Please describe shortly what most common errors of the App can be, how they occur and best ways of solving them.*
+
+-   This MoveApp is designed for species that roost at night. If the species is nocturnal (i.e. the provided *start* of roosting hours is earlier than the provided *end* of roosting hours), classifications will be inaccurate
+
+-   The first tag associated with each ID cannot be classified, as there is no lagged event to allow speed or time calculations
 
 ### Null or error handling
-*Please indicate for each setting as well as the input data which behaviour the App is supposed to show in case of errors or NULL values/input. Please also add notes of possible errors that can happen if settings/parameters are improperly set and any other important information that you find the user should be aware of.*
 
-*Example:* **Setting `radius`:** If no radius AND no duration are given, the input data set is returned with a warning. If no radius is given (NULL), but a duration is defined then a default radius of 1000m = 1km is set. 
+-   Settings `Start/End of Roosting Hours`: If not provided, an estimated start time of 6pm and end time of 7am will be assumed. If these are provided but invalid hours (i.e. \<0 or \>24), the input is returned with a warning
+
+-   Setting `Upper Speed Bound for Stationary Behaviour`: If less than zero or not a double, the input is returned with a warning
+
+-   Empty datasets are returned with a warning (there is nothing to classify)
