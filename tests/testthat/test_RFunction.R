@@ -1,6 +1,7 @@
 library('move2')
 
 test_data <- test_data("input3_move2.rds") #file must be move2!
+`%!in%` <- Negate(`%in%`)
 
 test_that("all behaviours are classified", {
   
@@ -34,7 +35,6 @@ test_that("error is thrown by invalid timestamps", {
                         roostend = -1,
                         travelcut = 3)
   )
-
   
 })
 
@@ -47,5 +47,18 @@ test_that("error is thrown by invalid speed", {
                         travelcut = "not_a_number")
   )
   
+  
+})
+
+test_that("expected classification outcome has not changed", {
+  
+  actual <- rFunction(data = test_data,
+                      rooststart = 18, 
+                      roostend = 7,
+                      travelcut = 3)
+  
+  
+  expect(sum(actual$behav == "SFeeding") == 115, 
+         failure_message = "Number of feeding locations has changed unexpectedly without methodology change")
   
 })

@@ -9,3 +9,4 @@ data/local_app_files/uploaded-app-files/second_stage_model/modelfit.rds
 data/raw/workflow.rds
 data/local_app_files/uploaded-app-files/second_stage_model/modelfit.rds
 appspec.json_DEPRECATED.json
+tests/testthat/.behavsummary.csv

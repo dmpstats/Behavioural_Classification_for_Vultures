@@ -70,20 +70,59 @@
       ],
       "orcid": null,
       "affiliation": "University of St Andrews",
+      "affiliationRor": "https://ror.org/02wn5qz54"
+    },
+    {
+      "firstName": "Lindesay",
+      "middleInitials": "A.",
+      "lastName": "Scott-Hayward",
+      "email": "lass@st-andrews.ac.uk",
+      "roles": [
+        "author",
+        "creator"
+      ],
+      "orcid": "0000-0003-3402-533X",
+      "affiliation": "University of St Andrews",
+      "affiliationRor": "https://ror.org/02wn5qz54"
+    },
+    {
+      "firstName": "Monique",
+      "middleInitials": "L.",
+      "lastName": "MacKenzie",
+      "email": "monique.mackenzie@st-andrews.ac.uk",
+      "roles": [
+        "author",
+        "creator"
+      ],
+      "orcid": "0000-0002-8505-6585",
+      "affiliation": "University of St Andrews",
+      "affiliationRor": "https://ror.org/02wn5qz54"
+    },
+    {
+      "firstName": "Bruno",
+      "middleInitials": "",
+      "lastName": "Caneco",
+      "email": "bruno@dmpstats.co.uk",
+      "roles": [
+        "author",
+        "creator"
+      ],
+      "orcid": null,
+      "affiliation": "DMP Stats",
       "affiliationRor": null
     }
   ],
   "funding": [
     {
       "name": "University of St Andrews",
-      "comment": "NA"
+      "comment": null
     }
   ],
   "references": [
 
   ],
   "documentation": {
-    "url": "https://github.com/callumjclarke//README.md"
+    "url": "https://github.com/callumjclarke/Behavioural_Classification_for_Vultures/README.md"
   }
 }
 
