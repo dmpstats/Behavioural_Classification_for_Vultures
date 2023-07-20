@@ -8,7 +8,7 @@ Github repository: *github.com/callumjclarke/Behavioural_Classification_for_Vult
 
 This MoveApp applies a simple behavioural classification model to bird data. It classifies behaviour into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. Subdivision of these four behaviours assists in clustering processes.
 
-There are plans to allow the user to upload classification models trained using data specific to the animals in the input data. These models will be generated using the `Fit Speed-as-Time-of-Day Model` MoveApp and uploaded manually.
+There are plans to allow the user to upload classification models trained using data specific to the animals in the input data. These models will be generated using the `Fit Speed-as-Time-of-Day Model` MoveApp [to be published soon] and uploaded manually.
 
 ## Documentation
 
@@ -24,17 +24,15 @@ Behavioural classification is performed on GPS data only with the option to inco
 
 No `Feeding` behaviour is predicted within the first stage of classification.
 
-Reclassification is performed if altitude data is available. This requires a column named `altitude` - if not present, please use the `Standardise Formats and Calculate Basic Statistics` MoveApp to rename or create this column. Altitude reclassification is performed as follows:
+Reclassification is performed if altitude data is available. This requires a column named `altitude` - if not present, please use the [`Standardise Formats and Calculate Basic Statistics`](https://github.com/callumjclarke/Standardise_Formats_and_Calculate_Basic_Statistics.git) MoveApp to rename or create this column. Altitude reclassification is performed as follows:
 
--   An individual that is initially assigned to `Resting` but whose altitude is increasing is reclassified to `Travelling`
+-   An individual that is initially assigned to `Resting` but whose altitude to the next location is increasing is reclassified to `Travelling`
 
--   An individual that is initially assigned to `Resting` but whose altitude is decreasing is reclassified to `Travelling` if the next location involves further ascent or desccent. Otherwise, it remains `Resting`
+-   An individual that is initially assigned to `Resting` but whose altitude to the next location is decreasing is reclassified to `Travelling` *if* the next location involves further ascent or desccent. Otherwise, it remains `Resting`
 
-`Feeding` behaviour is classified based on runs of stationary behaviour. Locations within the highest 5 percentiles of cumulative time spent stationary are reclassified as `Feeding`.
+`Feeding` behaviour is then classified based on runs of stationary behaviour. Locations within the highest 5 percentiles of cumulative time spent stationary are reclassified as `Feeding`.
 
-The final stage of classification, when incorporated, will call the (provided *or* uploaded `Fit Speed-as-Time-of-Day` models and calculates cumulative runs of stationary behaviours (`Resting` and `Roosting`).
-
-Reclassification is performed to generate `Feeding` behaviour: locations within the lowest 5 percentiles of predicted movement based on time of day are reclassified as `Feeding`
+In future iterations, reclassification will be performed to identify further `Feeding` behaviour: locations within the lowest 5 percentiles of predicted movement based on time of day will be reclassified as `Feeding`. This will become available when the `Fit Speed-as-Time-of-Day Model` MoveApp is published.
 
 ### Input data
 
