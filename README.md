@@ -6,33 +6,31 @@ Github repository: *github.com/callumjclarke/Behavioural_Classification_for_Vult
 
 ## Description
 
-This MoveApp applies a simple behavioural classification model to bird data. It classifies behaviour into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. Subdivision of these four behaviours assists in clustering processes.
-
-There are plans to allow the user to upload classification models trained using data specific to the animals in the input data. These models will be generated using the `Fit Speed-as-Time-of-Day Model` MoveApp [to be published soon] and uploaded manually.
+This MoveApp applies a simple behavioural classification to bird data. It classifies behaviour into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. These four behaviours may be used in an additional MoveApp for clustering (e.g. to find feeding locations).
 
 ## Documentation
 
-This MoveApp is designed primarily for use with carcass-scavenging birds of prey. Provided models are based on *Gyps africanus* (white-backed vulture) data; if applying this MoveApp to data related to a different species, it is strongly recommended that you use the **Fit Speed-as-Time-of-Day Model** MoveApp to generate suitable models. [This MoveApp is due for release shortly. For now, its components have been removed from this App.]
-
-Behavioural classification is performed on GPS data only with the option to incorporate altitude data. The first stage of classification is based on speed (calculated using the lagged event), and predicts one of three behaviours:
+Behavioural classification is performed on GPS location data with the option to incorporate altitude data. The first stage of classification is based on speed, and predicts one of three behaviours:
 
 -   Speed below the travelling threshold and timestamp within roosting hours: `Roosting`
-
 -   Speed below the travelling threshold and timestamp outside of roosting hours: `Resting`
-
 -   Speed above the travelling threshold: `Travelling`
 
-No `Feeding` behaviour is predicted within the first stage of classification.
+No `Feeding` behaviour is classified within this first stage.
 
-Reclassification is performed if altitude data is available. This requires a column named `altitude` - if not present, please use the [`Standardise Formats and Calculate Basic Statistics`](https://github.com/callumjclarke/Standardise_Formats_and_Calculate_Basic_Statistics.git) MoveApp to rename or create this column. Altitude reclassification is performed as follows:
+If altidude information is available, reclassification is performed. This requires a column named `altitude` - if not present, please use the [`Standardise Formats and Calculate Basic Statistics`](https://github.com/callumjclarke/Standardise_Formats_and_Calculate_Basic_Statistics.git) MoveApp to rename or create this column. Altitude reclassification is performed as follows:
 
--   An individual that is initially assigned to `Resting` but whose altitude to the next location is increasing is reclassified to `Travelling`
+-   A location that is initially assigned to `Resting` but whose altitude change to the next location is increasing is reclassified to `Travelling`
+-   A location that is initially assigned to `Resting` but whose altitude change to the next location is decreasing is reclassified to `Travelling` *if* the next location involves further ascent or descent. Otherwise, it remains `Resting`
 
--   An individual that is initially assigned to `Resting` but whose altitude to the next location is decreasing is reclassified to `Travelling` *if* the next location involves further ascent or desccent. Otherwise, it remains `Resting`
+`Feeding` behaviour is classified based on runs of stationary behaviour. Locations within the highest 5th percentile of cumulative time spent stationary are reclassified as `Feeding`.
 
-`Feeding` behaviour is then classified based on runs of stationary behaviour. Locations within the highest 5 percentiles of cumulative time spent stationary are reclassified as `Feeding`.
+### Future plans
 
-In future iterations, reclassification will be performed to identify further `Feeding` behaviour: locations within the lowest 5 percentiles of predicted movement based on time of day will be reclassified as `Feeding`. This will become available when the `Fit Speed-as-Time-of-Day Model` MoveApp is published.
+There are additional components to this application that will become available once additional MoveApps are created. 
+
+1. If non-location (accelerometer data) is available, the app will use this information to distinguish resting behaviour from feeding behaviour and re-classify resting accordingly.  This will require the user to add an additional app to the workflow between the pre-processing (`Standardise Formats and Calculate Basic Statistics`) and this classification app. 
+2. Individual based behaviour will be used to ascertain if the behaviour at a given time of day is unusual.  This is achieved by using a model for each individual based on speed and time of day to make predictions and locations within the lowest 5th percentile of predicted movement based on time of day will be reclassified as `Feeding`.  An app will be published to create these individual models and the output object uploaded manually to the workflow to include it here.  
 
 ### Input data
 
@@ -56,9 +54,9 @@ Move2 location object
 
 ### Most common errors
 
--   This MoveApp is designed for species that roost at night. If the species is nocturnal (i.e. the provided *start* of roosting hours is earlier than the provided *end* of roosting hours), classifications will be inaccurate and errors may be thrown
+-   This MoveApp is designed for species that roost at night. If the species is nocturnal (i.e. the provided *start* of roosting hours is earlier than the provided *end* of roosting hours), classifications will be inaccurate or unable to be calculated. 
 
--   The first tag associated with each ID cannot be classified, as there is no lagged event to allow speed or time calculations. One location (the earliest) for each ID will be classified as `Unknown`
+-   The first location associated with each ID cannot be classified, as there is no lagged event to allow speed or time calculations. Therefore, one location (the earliest) for each ID will be classified as `Unknown`
 
 ### Null or error handling
 
@@ -68,4 +66,4 @@ Move2 location object
 
 -   Empty datasets are returned with a warning (there is nothing to classify)
 
--   If an individual has fewer than 10 associated locations, the second-stage classification is not performed. More data is required for accurate classification, and small datasets can cause bugs during reclassification
+-   If an individual has fewer than 10 associated locations, the second-stage classification is not performed. More data is required for accurate classification, and small datasets can cause inconsistencies during reclassification
