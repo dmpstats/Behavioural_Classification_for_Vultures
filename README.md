@@ -16,6 +16,8 @@ Behavioural classification is performed on GPS location data with the option to 
 -   Speed below the travelling threshold and timestamp outside of roosting hours: `Resting`
 -   Speed above the travelling threshold: `Travelling`
 
+Roosting hours are determined either by sunrise-sunset data generated previously by the **Add Local and Solar Time** MoveApp (if `Use Provided Sunrise Hours = TRUE`) or using the `Start/End of Roosting Hours` settings.
+
 No `Feeding` behaviour is classified within this first stage.
 
 If altidude information is available, reclassification is performed. This requires a column named `altitude` - if not present, please use the [`Standardise Formats and Calculate Basic Statistics`](https://github.com/callumjclarke/Standardise_Formats_and_Calculate_Basic_Statistics.git) MoveApp to rename or create this column. Altitude reclassification is performed as follows:
@@ -27,10 +29,10 @@ If altidude information is available, reclassification is performed. This requir
 
 ### Future plans
 
-There are additional components to this application that will become available once additional MoveApps are created. 
+There are additional components to this application that will become available once additional MoveApps are created.
 
-1. If non-location (accelerometer data) is available, the app will use this information to distinguish resting behaviour from feeding behaviour and re-classify resting accordingly.  This will require the user to add an additional app to the workflow between the pre-processing (`Standardise Formats and Calculate Basic Statistics`) and this classification app. 
-2. Individual based behaviour will be used to ascertain if the behaviour at a given time of day is unusual.  This is achieved by using a model for each individual based on speed and time of day to make predictions and locations within the lowest 5th percentile of predicted movement based on time of day will be reclassified as `Feeding`.  An app will be published to create these individual models and the output object uploaded manually to the workflow to include it here.  
+1.  If non-location (accelerometer data) is available, the app will use this information to distinguish resting behaviour from feeding behaviour and re-classify resting accordingly. This will require the user to add an additional app to the workflow between the pre-processing (`Standardise Formats and Calculate Basic Statistics`) and this classification app.
+2.  Individual based behaviour will be used to ascertain if the behaviour at a given time of day is unusual. This is achieved by using a model for each individual based on speed and time of day to make predictions and locations within the lowest 5th percentile of predicted movement based on time of day will be reclassified as `Feeding`. An app will be published to create these individual models and the output object uploaded manually to the workflow to include it here.
 
 ### Input data
 
@@ -52,15 +54,25 @@ Move2 location object
 
 `Upper speed bound for Stationary Behaviour`: The speed (in km/h) beyond which this species is assumed to be travelling. Default is 3 km/h.
 
+`Use Provided Sunrise Hours`: Determines whether to use sunrise-sunset timestamps provided within the input data. **Warning: You *must* have used the 'Add Local and Solar Time' MoveApp earlier in the workflow to create this data.**
+
+`Sunrise leeway`: The number of minutes after (or before, if negative) that *daytime* is considered to begin. *Daytime* is the period in which stationary behaviour is **not** classified as *Roosting*. For example `Sunrise leeway = 10` means that the bird's roost is assumed to end 10 minutes *after* sunrise.
+
+`Sunset leeway`: The equivalent of `Sunrise leeway` for sunset, and determines what time *night-time,* or roosting hours, begin. Stationary behaviour after this time, and before the next determined *daytime*, is classified as *Roosting.*
+
 ### Most common errors
 
--   This MoveApp is designed for species that roost at night. If the species is nocturnal (i.e. the provided *start* of roosting hours is earlier than the provided *end* of roosting hours), classifications will be inaccurate or unable to be calculated. 
+-   This MoveApp is designed for species that roost at night. If the species is nocturnal (i.e. the provided *start* of roosting hours is earlier than the provided *end* of roosting hours), classifications will be inaccurate or unable to be calculated.
+
+-   Selecting to `Use Provided Sunrise Hours` without having previously generated the hours will affect the day-night classification.
 
 -   The first location associated with each ID cannot be classified, as there is no lagged event to allow speed or time calculations. Therefore, one location (the earliest) for each ID will be classified as `Unknown`
 
 ### Null or error handling
 
 -   Settings `Start/End of Roosting Hours`: If not provided, an estimated start time of 6pm and end time of 7am will be assumed. If these are provided but invalid hours (i.e. \<0 or \>24), the input is returned with a warning
+
+-   Selecting to `Use Provided Sunrise Hours` without having previously generated the data using the **Add Local and Solar Time MoveApp** will force this App to default to classifying day and night using the `Start/End of Roosting Hours` settings.
 
 -   Setting `Upper Speed Bound for Stationary Behaviour`: If less than zero or non-numeric, the input is returned with a warning
 

@@ -20,6 +20,35 @@
       "description": "Insert the upper speed cutoff (in km/h) for behaviour to be classified as 'stationary'. ",
       "defaultValue": 3,
       "type": "DOUBLE"
+    },
+    {
+      "id": "create_plots",
+      "name": "Create summary plots",
+      "description": "Check this to generate, as artefacts, simple location plots of each bird's behaviourally-classified movements",
+      "defaultValue": false,
+      "type": "CHECKBOX"
+    },
+
+    {
+      "id": "use_sunrise",
+      "name": "Use provided sunrise-sunset hours",
+      "description": "Check this to perform day-night classification using provided sunrise and sunset data. WARNING: You must have used the 'Add Local and Solar Time' MoveApp before this operation to create columns 'sunrise_timestamp' and 'sunset_timestamp'. ",
+      "defaultValue": false,
+      "type": "CHECKBOX"
+    },
+    {
+      "id": "sunrise_leeway",
+      "name": "Sunrise leeway (minutes):",
+      "description": "This is the number of minutes before/after sunrise that 'daytime' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunrise; positive numbers move it after.) NOTE: requires 'Use provided sunrise-sunset hours' to be TRUE.",
+      "defaultValue": 0,
+      "type": "INTEGER"
+    },
+    {
+      "id": "sunset_leeway",
+      "name": "Sunset leeway (minutes):",
+      "description": "This is the number of minutes before/after sunset that 'night-time' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunset; positive numbers move it after.) NOTE: requires 'Use provided sunrise-sunset hours' to be TRUE.",
+      "defaultValue": 0,
+      "type": "INTEGER"
     }
   ],
   "dependencies": {
@@ -31,20 +60,11 @@
         "name": "move2"
       },
       {
-        "name": "splines"
-      },
-      {
         "name": "magrittr"
       },
       {
         "name": "dplyr"
       },
-      {
-        "name": "spam"
-      },
-      {
-        "name": "MRSea"
-      }
     ]
   },
   "createsArtifacts": true,
@@ -55,8 +75,10 @@
   },
   "language": "eng",
   "keywords": [
-    "example",
-    "template"
+    "classification",
+    "vultures",
+    "bird", 
+    "feeding"
   ],
   "people": [
     {

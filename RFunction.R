@@ -2,12 +2,14 @@ library('move2')
 library('lubridate')
 library('magrittr')
 library('dplyr')
-library('MRSea')
-library('splines')
-library('spam')
+library('ggplot2')
+`%!in%` <- Negate(`%in%`)
 
-
-rFunction = function(data, rooststart, roostend, travelcut #, 
+rFunction = function(data, rooststart, roostend, travelcut,
+                     create_plots = TRUE,
+                     use_sunrise = FALSE,
+                     sunrise_leeway = 0,
+                     sunset_leeway = 0 #, 
                      # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
                      ) {
   
@@ -38,6 +40,15 @@ rFunction = function(data, rooststart, roostend, travelcut #,
   
   # Check Input Data ----------------------------------------------------------------------------------------------
   
+  logger.trace(paste0(
+    "Input data provided:  \n", 
+    "rooststart: ", toString(rooststart), "\n", 
+    "roostend: ", toString(roostend), "\n",
+    "travelcut: ", toString(travelcut), "\n",
+    "sunrise_leeway: ", toString(sunrise_leeway), "\n", 
+    "sunset_leeway: ", toString(sunset_leeway), "\n",
+    "input data dimensions: ", toString(dim(data))
+  ))
 
   if(nrow(data) == 0) {
     logger.warn("Input data is empty. Returning input.")
@@ -49,12 +60,30 @@ rFunction = function(data, rooststart, roostend, travelcut #,
   }
   
   if(rooststart < roostend) {
-    logger.warn("This MoveApp is not yet optimised for nocturnal species. Classifications will be inaccurate")
+    logger.warn("This MoveApp is not yet optimised for nocturnal species. Classifications will be inaccurate and errors may be thrown")
   }
   
   if(travelcut <=  0 | !is.numeric(travelcut)) {
     logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
     stop("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
+  }
+  
+  if (use_sunrise == TRUE & "sunrise_timestamp" %!in% colnames(data)) {
+    logger.warn("'sunrise_timestamp' is not a column in the input data. Sunrise-sunset classification cannot be performed. Defaulting to manually provided roosting hours - please use the 'Add Local and Solar Time' MoveApp in this workflow before this App")
+    use_sunrise <- FALSE
+  }
+  if (use_sunrise == TRUE & "sunset_timestamp" %!in% colnames(data)) {
+    logger.warn("'sunset_timestamp' is not a column in the input data. Sunrise-sunset classification cannot be performed. Defaulting to manually provided roosting hours - please use the 'Add Local and Solar Time' MoveApp in this workflow before this App")
+    use_sunrise <- FALSE
+  }
+  
+  if(is.null(sunrise_leeway)) {
+    logger.warn("No sunrise leeway provided as input. Defaulting to no leeway")
+    sunrise_leeway <- 0
+  }
+  if(is.null(sunset_leeway)) {
+    logger.warn("No sunset leeway provided as input. Defaulting to no leeway")
+    sunset_leeway <- 0
   }
   
   logger.trace("Input is in correct format. Proceeding with first-stage classification for all IDs")
@@ -139,11 +168,19 @@ rFunction = function(data, rooststart, roostend, travelcut #,
       #' If a bird is SResting and it is night time, the bird is SRoosting
       #' Otherwise, remains unchanged
   
-  data %<>%
-    mutate(behav = case_when(
-      behav == "SResting" & !between(hour(mt_time(.)), roostend, rooststart) ~ "SRoosting",
-      TRUE ~ behav
-    ))
+  if (use_sunrise == TRUE) {
+    data %<>%
+      mutate(behav = case_when(
+        behav == "SResting" & !between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway))
+      ))
+  } else {
+    data %<>%
+      mutate(behav = case_when(
+        behav == "SResting" & !between(hour(mt_time(.)), roostend, rooststart) ~ "SRoosting",
+        TRUE ~ behav
+      ))
+  }
+
   
   # Second-Stage Classification ----------------------------------------------------------------------------------
   
@@ -280,7 +317,44 @@ rFunction = function(data, rooststart, roostend, travelcut #,
   
   # Rejoin move2 objects into classified data:
   logger.info("All second-stage classifications complete. Re-stacking to move2 object")
-  updateddata <- move2::mt_stack(newdat)
+  updateddata <- move2::mt_stack(newdat) 
+  
+  
+  
+  # Create plots, if selected ------------------------------------------------------
+  if(create_plots == TRUE) {
+    
+    # create simple plot
+    for (bird in unique(mt_track_id(data))) {
+      
+      # Create artefact
+      png(appArtifactPath(
+        paste0("birdtrack_", toString(bird), ".png")
+      ))
+      
+      birddat <- data %>% 
+        filter_track_data(
+          .track_id = bird
+        )
+      
+      birdplot <- ggplot(data = birddat, aes(x = sf::st_coordinates(birddat)[, 1], 
+                                             y = sf::st_coordinates(birddat)[, 2])) +
+        geom_path() +
+        geom_point(data = birddat, 
+                   aes(x = sf::st_coordinates(birddat)[, 1], 
+                       y = sf::st_coordinates(birddat)[, 2],
+                       colour = behav)) +
+        ggtitle(paste0("Behaviour classification of ID ", bird)) +
+        xlab("Easting") +
+        ylab("Northing")
+      print(birdplot)
+      
+      #Save as artefact
+      dev.off()
+      
+    }
+    
+  }
   
   
   # Generate summary table
