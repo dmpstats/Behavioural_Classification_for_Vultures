@@ -184,6 +184,8 @@ rFunction = function(data, rooststart, roostend, travelcut,
   
   # Second-Stage Classification ----------------------------------------------------------------------------------
   
+  
+  
   ## Accelerometer Data -----------------------------------------------------------------------------------------------
   
         # Accelerometer operations will go here

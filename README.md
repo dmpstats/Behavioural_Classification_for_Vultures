@@ -16,16 +16,16 @@ Behavioural classification is performed on GPS location data with the option to 
 -   Speed below the travelling threshold and timestamp outside of roosting hours: `Resting`
 -   Speed above the travelling threshold: `Travelling`
 
-Roosting hours are determined either by sunrise-sunset data generated previously by the **Add Local and Solar Time** MoveApp (if `Use Provided Sunrise Hours = TRUE`) or using the `Start/End of Roosting Hours` settings.
+Roosting hours are determined either by sunrise-sunset data generated previously by the **Add Local and Solar Time** MoveApp (using setting `Use Provided Sunrise Hours = TRUE`) or, alternatively, using the `Start/End of Roosting Hours` settings.
 
-No `Feeding` behaviour is classified within this first stage.
+No `Feeding` behaviour is classified within this first stage of classification.
 
-If altidude information is available, reclassification is performed. This requires a column named `altitude` - if not present, please use the [`Standardise Formats and Calculate Basic Statistics`](https://github.com/callumjclarke/Standardise_Formats_and_Calculate_Basic_Statistics.git) MoveApp to rename or create this column. Altitude reclassification is performed as follows:
+If altitude information is available, reclassification is performed. This requires the input data to contain a column named `altitude` - if not present, please use the [`Standardise Formats and Calculate Basic Statistics`](https://github.com/callumjclarke/Standardise_Formats_and_Calculate_Basic_Statistics.git) MoveApp to rename or create this column. Altitude reclassification is performed as follows:
 
 -   A location that is initially assigned to `Resting` but whose altitude change to the next location is increasing is reclassified to `Travelling`
 -   A location that is initially assigned to `Resting` but whose altitude change to the next location is decreasing is reclassified to `Travelling` *if* the next location involves further ascent or descent. Otherwise, it remains `Resting`
 
-`Feeding` behaviour is classified based on runs of stationary behaviour. Locations within the highest 5th percentile of cumulative time spent stationary are reclassified as `Feeding`.
+`Feeding` behaviour is exclusively classified based on runs of stationary behaviour. Locations within the highest 5th percentile of cumulative time spent stationary are reclassified as `Feeding`.
 
 ### Future plans
 
@@ -44,7 +44,8 @@ Move2 location object
 
 ### Artefacts
 
--   `behavsummary.csv` - A .csv object containing a table of the track IDs within the dataset against the number of each behaviour classified
+-   `behavsummary.csv` - A .csv object summarising the classification output. For each ID, the total number of locations assigned to each behavioural group (`Unknown, SFeeding, SResting, SRoosting, STravelling`). **NOTE:** Only one location should be classified as `Unknown` for each ID. If more than one location is classified as `Unknown`, please report this bug
+-   `birdtrack.png` - for each ID within the input data, a plot of the animal's movements (with behavioural classification overlaid) is created as an artefact
 
 ### Settings
 
@@ -64,7 +65,7 @@ Move2 location object
 
 -   This MoveApp is designed for species that roost at night. If the species is nocturnal (i.e. the provided *start* of roosting hours is earlier than the provided *end* of roosting hours), classifications will be inaccurate or unable to be calculated.
 
--   Selecting to `Use Provided Sunrise Hours` without having previously generated the hours will affect the day-night classification.
+-   Selecting to `Use Provided Sunrise Hours` without having previously generated the hours using the **Add Local and Solar Time MoveApp** will throw an error
 
 -   The first location associated with each ID cannot be classified, as there is no lagged event to allow speed or time calculations. Therefore, one location (the earliest) for each ID will be classified as `Unknown`
 
@@ -78,4 +79,4 @@ Move2 location object
 
 -   Empty datasets are returned with a warning (there is nothing to classify)
 
--   If an individual has fewer than 10 associated locations, the second-stage classification is not performed. More data is required for accurate classification, and small datasets can cause inconsistencies during reclassification
+-   If an individual has fewer than 10 associated locations within the input data, the second-stage classification is not performed. More data is required for accurate classification, and small datasets can cause inconsistencies during reclassification
