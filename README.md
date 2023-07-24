@@ -55,6 +55,8 @@ Move2 location object
 
 `Upper speed bound for Stationary Behaviour`: The speed (in km/h) beyond which this species is assumed to be travelling. Default is 3 km/h.
 
+`Create Plots` (logical): Select this option to generate a `birdtrack.png` plot artefact for each ID within the input data. See below for details.
+
 `Use Provided Sunrise Hours`: Determines whether to use sunrise-sunset timestamps provided within the input data. **Warning: You *must* have used the 'Add Local and Solar Time' MoveApp earlier in the workflow to create this data.**
 
 `Sunrise leeway`: The number of minutes after (or before, if negative) that *daytime* is considered to begin. *Daytime* is the period in which stationary behaviour is **not** classified as *Roosting*. For example `Sunrise leeway = 10` means that the bird's roost is assumed to end 10 minutes *after* sunrise.
