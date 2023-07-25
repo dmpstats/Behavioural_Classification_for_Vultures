@@ -5,6 +5,9 @@ library('dplyr')
 library('ggplot2')
 library('data.table')
 library('sf')
+library('units')
+library('stringr')
+
 `%!in%` <- Negate(`%in%`)
 
 rFunction = function(data, rooststart, roostend, travelcut,
