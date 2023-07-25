@@ -3,6 +3,8 @@ library('lubridate')
 library('magrittr')
 library('dplyr')
 library('ggplot2')
+library('data.table')
+library('sf')
 `%!in%` <- Negate(`%in%`)
 
 rFunction = function(data, rooststart, roostend, travelcut,

@@ -40,7 +40,21 @@ Move2 location object
 
 ### Output data
 
-Move2 location object
+Move2 location object, with additional columns:
+
+-   `hourmin`: the time of day provided as a double
+
+-   `yearmonthday`: the date provided in `timestamp` with hyphens removed
+
+-   `dist_m`: the distance travelled between consecutive locations
+
+-   `kmph`: the speed between consecutive locations
+
+-   `timediff_hrs`: the time difference between consecutive locations
+
+-   `behav`: an estimated behaviour at each given location
+
+-   `stationary`: 0 if the bird is estimated to perform a stationary behaviour, 1 otherwise
 
 ### Artefacts
 

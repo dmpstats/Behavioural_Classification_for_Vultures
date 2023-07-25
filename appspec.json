@@ -67,6 +67,18 @@
       },
       {
         "name": "ggplot2"
+      },
+      {
+        "name": "data.table"
+      },
+      {
+        "name": "sf"
+      },
+      {
+        "name": "units"
+      },
+      {
+        "name": "stringr"
       }
     ]
   },
