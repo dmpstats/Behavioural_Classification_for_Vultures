@@ -14,7 +14,8 @@ rFunction = function(data, rooststart, roostend, travelcut,
                      create_plots = TRUE,
                      use_sunrise = FALSE,
                      sunrise_leeway = 0,
-                     sunset_leeway = 0 #, 
+                     sunset_leeway = 0,
+                     altbound = 25 #, 
                      # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
                      ) {
   
@@ -52,6 +53,7 @@ rFunction = function(data, rooststart, roostend, travelcut,
     "travelcut: ", toString(travelcut), "\n",
     "sunrise_leeway: ", toString(sunrise_leeway), "\n", 
     "sunset_leeway: ", toString(sunset_leeway), "\n",
+    "altbound: ", toString(altbound), "\n",
     "input data dimensions: ", toString(dim(data))
   ))
 
@@ -82,6 +84,11 @@ rFunction = function(data, rooststart, roostend, travelcut,
     use_sunrise <- FALSE
   }
   
+  if(all(c("sunrise_timestamp", "sunset_timestamp") %in% colnames(data)) & 
+     (use_sunrise == TRUE)) {
+    logger.trace("Sunrise and sunset columns identified. Able to perform sunrise-sunset classification")
+  }
+  
   if(is.null(sunrise_leeway)) {
     logger.warn("No sunrise leeway provided as input. Defaulting to no leeway")
     sunrise_leeway <- 0
@@ -89,6 +96,11 @@ rFunction = function(data, rooststart, roostend, travelcut,
   if(is.null(sunset_leeway)) {
     logger.warn("No sunset leeway provided as input. Defaulting to no leeway")
     sunset_leeway <- 0
+  }
+  
+  if(!is.numeric(altbound)) {
+    logger.warn("altbound is non-numeric. Stopping computation - please check inputs")
+    stop("altbound (altitude threshold) is non-numeric. Please check input settings")
   }
   
   logger.trace("Input is in correct format. Proceeding with first-stage classification for all IDs")
@@ -145,21 +157,22 @@ rFunction = function(data, rooststart, roostend, travelcut,
       #'      Next location is ascending/descending ==> STravelling
       #'      Next location is flatlining ==> remains SResting
   
-  
   if ("altitude" %in% colnames(data)) {
     logger.info("Altitude column identified. Beginning altitude classification")
 
     # Classify altitude changes
-    data %<>% mutate(altdiff = altitude - lag(altitude),
+    data %<>% dplyr::mutate(altdiff = altitude - lag(altitude),
                      altchange = case_when(
-                       altdiff < 25 ~ "descent",
-                       altdiff > 25 ~ "ascent",
+                       altdiff < -altbound ~ "descent",
+                       altdiff > altbound ~ "ascent",
                        TRUE ~ "flatline"
                      ))
+
+    
     data %<>%
       mutate(behav = case_when(
-        behav == "SResting" & altchange == "ascent" ~ "STravelling",
-        behav == "SResting" & altchange == "descent" & lead(altchange) %in% c("descent", "ascent") ~ "STravelling",
+        (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
+        (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
         TRUE ~ behav
       ))
     
@@ -173,15 +186,17 @@ rFunction = function(data, rooststart, roostend, travelcut,
       #' If a bird is SResting and it is night time, the bird is SRoosting
       #' Otherwise, remains unchanged
   
+  
   if (use_sunrise == TRUE) {
     data %<>%
       mutate(behav = case_when(
-        behav == "SResting" & !between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway))
+        (behav == "SResting") & (!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway))) ~ "SRoosting",
+        TRUE ~ behav
       ))
   } else {
     data %<>%
       mutate(behav = case_when(
-        behav == "SResting" & !between(hour(mt_time(.)), roostend, rooststart) ~ "SRoosting",
+        (behav == "SResting") & (!between(hour(mt_time(.)), roostend, rooststart)) ~ "SRoosting",
         TRUE ~ behav
       ))
   }
@@ -211,6 +226,7 @@ rFunction = function(data, rooststart, roostend, travelcut,
       next}
     
     logger.info(paste0("Beginning second-stage classification for ID ", tag))
+    logger.trace(paste0("Number of locations available for this ID: ", nrow(birddat)))
     
     
     
@@ -329,6 +345,7 @@ rFunction = function(data, rooststart, roostend, travelcut,
   
   
   # Create plots, if selected ------------------------------------------------------
+  
   if(create_plots == TRUE) {
     
     # create simple plot

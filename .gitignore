@@ -11,3 +11,4 @@ data/local_app_files/uploaded-app-files/second_stage_model/modelfit.rds
 appspec.json_DEPRECATED.json
 tests/testthat/.behavsummary.csv
 tests/testthat/.birdtrack_Prinzesschen.png
+data/raw/sunrise.rds

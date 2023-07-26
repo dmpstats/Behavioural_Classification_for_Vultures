@@ -49,7 +49,14 @@
       "description": "This is the number of minutes before/after sunset that 'night-time' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunset; positive numbers move it after.) NOTE: requires 'Use provided sunrise-sunset hours' to be TRUE.",
       "defaultValue": 0,
       "type": "INTEGER"
-    }
+    },
+    {
+      "id": "altbound",
+      "name": "Altitude change threshold (metres):",
+      "description": "This is the absolute change in altitude which beyond a bird is classified as ascending/descending. For example, setting this to 25 means that the bird is ascending when its change in altitude is above 25m, and descending when below -25m.",
+      "defaultValue": 25,
+      "type": "DOUBLE"
+    },
   ],
   "dependencies": {
     "R": [
