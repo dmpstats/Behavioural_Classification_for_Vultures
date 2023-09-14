@@ -125,7 +125,9 @@ rFunction = function(data, rooststart, roostend, travelcut,
     # distinct(timestamp, .keep_all = TRUE) %>%
     mutate(
       #dist_m = sqrt((x - lag(x, default = NA))^2 + (y - lag(y, default = NA))^2),
-      timediff_hrs =   as.numeric(difftime(mt_time(data), lag(mt_time(data), default = mt_time(data)[1]), units = "hours")), 
+      timediff_hrs =   mt_time_lags(.) %>%
+        units::set_units("hours") %>%
+        as.vector(),
       #kmph = move2::mt_speed(data),
       hour = lubridate::hour(mt_time(data))
     ) 
@@ -157,14 +159,21 @@ rFunction = function(data, rooststart, roostend, travelcut,
       #'      Next location is ascending/descending ==> STravelling
       #'      Next location is flatlining ==> remains SResting
   
+
   if ("altitude" %in% colnames(data)) {
     logger.info("Altitude column identified. Beginning altitude classification")
 
     # Classify altitude changes
-    data %<>% dplyr::mutate(altdiff = altitude - lag(altitude),
-                     altchange = case_when(
+    data %<>% dplyr::mutate(
+      
+      altitude = as.numeric(altitude), # fix when input is character vector
+      
+      altdiff = ifelse(!is.na(altitude) & !is.na(dplyr::lead(altitude)), dplyr::lead(altitude) - altitude, NA),
+      
+      altchange = case_when(
                        altdiff < -altbound ~ "descent",
                        altdiff > altbound ~ "ascent",
+                       is.na(altdiff) ~ "flatline",
                        TRUE ~ "flatline"
                      ))
 
