@@ -3,8 +3,8 @@
     "rooststart": 18,
     "roostend": 7,
     "create_plots": true,
-    "use_sunrise": false,
-    "sunrise_leeway": -30, 
-    "sunset_leeway": 30,
+    "use_sunrise": true,
+    "sunrise_leeway": -15, 
+    "sunset_leeway": 15,
     "altbound": 25
 }
