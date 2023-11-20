@@ -7,8 +7,109 @@ library('data.table')
 library('sf')
 library('units')
 library('stringr')
+library('tidyr') 
 
 `%!in%` <- Negate(`%in%`)
+
+# Accelerometer Interpolation Function --------------------------------------------
+
+prep_ACC <- function(data, interpolate = FALSE) {
+
+  #' This will interpolate ACC using the nearest two values on the condition that
+  #' both values are within 30mins of the location's timestamp
+  
+  # Unnest into variances ------------------------------
+  
+  # Store track data for later recall
+  tracklevel <- mt_track_data(data)
+  
+  # Split between no ACC and ACC:
+  missrows <- filter(data, is.na(acc_dt)) 
+  accrows <- filter(data, !is.na(acc_dt))  
+
+  # Operate on ACC rows
+  loc_acc_var <- accrows %>% 
+    mutate(
+      var = purrr::map(acc_dt, \(acc_events){
+        if(!is.null(acc_events$acc_burst)){
+          # bind list of matrices (one per ACC event) by row
+          all_bursts <- do.call(rbind, acc_events$acc_burst)
+          # variance in each active ACC axis
+          apply(all_bursts, 2, var)  
+        } else{
+          NULL
+        }
+      })
+    ) %>% 
+    unnest_wider(var, names_sep = "_")
+  
+  # Add empties to non-ACC rows 
+  missrows %<>% mutate(
+    var_acc_x = NULL,
+    var_acc_y = NULL,
+    var_acc_z = NULL
+  )
+  
+  alldat <- mt_stack(mt_as_move2(loc_acc_var, 
+                                 track_id_column = mt_track_id_column(missrows),
+                                 time_column = mt_time_column(missrows)
+  ), missrows,
+  .track_combine = "merge") %>%
+    arrange(mt_track_id(.), mt_time(.))
+  
+  # Restore track data (lost in above steps)
+  alldat <- mt_set_track_data(alldat, tracklevel)
+  
+  # Missing ACC Interpolation -----------------------------------------
+  # Complete this only if selected
+  
+  if (interpolate == TRUE) {
+    
+    acc_tmp <- alldat %>%
+      mutate(track = mt_track_id(.),
+             timestamp = mt_time(.),
+             interpACC = ifelse(is.na(acc_dt), TRUE, FALSE)) %>%
+      group_by(track) %>%
+      mutate(acc_ts = ifelse(is.na(acc_dt), NA, timestamp),
+             acc_ts = lubridate::as_datetime(acc_ts)
+      ) %>%
+      as.data.frame() %>%
+      dplyr::select(c("track", "timestamp", "acc_dt", "var_acc_x", "var_acc_y", "var_acc_z", "acc_ts", "interpACC")) %>%
+      group_by(track) %>%
+      mutate(acc_ts_next = acc_ts,
+             acc_ts_prev = acc_ts) %>%
+      fill(acc_ts_next, .direction = "up") %>%
+      fill(acc_ts_prev, .direction = "down") %>%
+      mutate(timetonext = ifelse(is.na(acc_dt), difftime(acc_ts_next, timestamp, units = "mins"), NA),
+             timetoprev = ifelse(is.na(acc_dt), difftime(timestamp, acc_ts_prev, units = "mins"), NA)
+      ) %>%
+      mutate(across(c(var_acc_x, var_acc_y, var_acc_z), ~ zoo::na.approx(.x, na.rm = FALSE, maxgap=4)))
+    
+    # Nullify cases which require interpolation of >30 minutes in either direction:
+    acc_tmp %<>% mutate(across(c(var_acc_x, var_acc_y, var_acc_z), ~ case_when(
+      (timetonext > 30) | (timetoprev > 30) ~ NA,
+      TRUE ~ .))) %>%
+      arrange(track, timestamp)
+    
+    # Return to mandata
+    alldat %<>%
+      arrange(mt_track_id(.), mt_time(.)) %>%
+      mutate(
+        var_acc_x = acc_tmp$var_acc_x,
+        var_acc_y = acc_tmp$var_acc_y,
+        var_acc_z = acc_tmp$var_acc_z,
+        interpACC = acc_tmp$interpACC
+      ) %>%
+      dplyr::select(-acc_dt)
+  } else {
+    alldat %<>% dplyr::select(-acc_dt)
+  }
+  
+  return(alldat)
+}
+
+
+# Main RFunction -------------------------------------------------------------------------------------
 
 rFunction = function(data, rooststart, roostend, travelcut,
                      create_plots = TRUE,
@@ -163,10 +264,11 @@ rFunction = function(data, rooststart, roostend, travelcut,
   if ("altitude" %in% colnames(data)) {
     logger.info("Altitude column identified. Beginning altitude classification")
 
+
     # Classify altitude changes
     data %<>% dplyr::mutate(
       
-      altitude = as.numeric(altitude), # fix when input is character vector
+      altitude = as.numeric(unlist(altitude)), # fix when input is character vector
       
       altdiff = ifelse(!is.na(altitude) & !is.na(dplyr::lead(altitude)), dplyr::lead(altitude) - altitude, NA),
       
@@ -201,26 +303,144 @@ rFunction = function(data, rooststart, roostend, travelcut,
       mutate(behav = case_when(
         (behav == "SResting") & (!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway))) ~ "SRoosting",
         TRUE ~ behav
-      ))
+      ),
+      # Add column to define nightpoints:
+      nightpoint = ifelse(!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway)), 1, 0)
+      
+      # Non-sunrise-sunset option:
+      )
   } else {
     data %<>%
       mutate(behav = case_when(
         (behav == "SResting") & (!between(hour(mt_time(.)), roostend, rooststart)) ~ "SRoosting",
         TRUE ~ behav
-      ))
+      ),
+      nightpoint = ifelse(!between(hour(mt_time(.)), roostend, rooststart), 1, 0)
+      )
   }
 
   
   # Second-Stage Classification ----------------------------------------------------------------------------------
   
   
+  ## Roosting Reclassification -----------------------------------------------------------------------------------------------
   
-  ## Accelerometer Data -----------------------------------------------------------------------------------------------
+  data %<>% mutate(
+    # Mark final point at night and first point in morning
+    endofday = case_when(
+    date(lead(mt_time(.))) != date(mt_time(.)) ~ "FINAL", # final point in day
+    date(lag(mt_time(.))) != date(mt_time(.)) ~ "FIRST" # first point in day 
+  ),
+  endofday = case_when(
+    # Adjust for middle-of-night points
+    endofday == "FIRST" & timediff_hrs > 2 & lag(timediff_hrs) > 2 ~ "MIDDLE",
+    TRUE ~ endofday
+  ),
+  endofday = case_when(
+    lag(endofday) == "MIDDLE" ~ "FIRST",
+    TRUE ~ endofday
+  ),
+  endofday_index = case_when(
+    endofday == "FINAL" ~ row_number(),
+    TRUE ~ NA
+    ),
+  endofday_dist = NA
+  )
   
-        # Accelerometer operations will go here
-        # Will be implemented later
-        #
+  # Generate distance between last/first points
+  for (row in 1:nrow(data)) {
+    if (is.na(data$endofday[row])) {next} else {
+      if (data$endofday[row] == "FIRST") {
+         dist <- st_distance(
+          data[row,],
+          data[row + 1,]
+        ) %>% units::set_units("metres")
+      
+      data$endofday_dist[row] <- dist
+      }
+    }
+  }
   
+  data %<>% mutate(
+    roostsite = ifelse(
+      !is.na(endofday_dist) & endofday_dist < 25,
+      1, 0
+    )
+  ) %>% select(-endofday_index)
+  
+  
+  #  Calculate cumulative travel and reverse cumulative travel per day
+  data %<>%
+    group_by(mt_track_id(.), date(mt_time(.))) %>%
+    mutate(travel01 = ifelse(stationary == T, 0, 1)) %>%
+    mutate(cum_trav = cumsum(travel01),
+           revcum_trav = spatstat.utils::revcumsum(travel01)) %>%
+    ungroup() %>%
+    mutate(
+      # Generate runs of stationary behaviour before/after final/first location:
+           roostgroup = ifelse(cum_trav == 0 | revcum_trav == 0, 1, 0),
+           roostgroup = rleid(roostgroup),
+           roostgroup = ifelse(cum_trav != 0 & revcum_trav != 0, NA, roostgroup)
+           ) %>%
+    dplyr::select(-c("travel01", "cum_trav", "revcum_trav", "endofday_dist")) %>%
+    mutate(
+      # Reclassify these runs as roosting
+      behav = ifelse(!is.na(roostgroup), "SRoosting", behav)
+    ) %>%
+    select(-c("endofday", "roostsite", "mt_track_id(.)", "date(mt_time(.))"))
+  
+  
+    ## Accelerometer Classification -----------------------------------------------------------------------------------------------
+  
+
+  if ("acc_dt" %in% colnames(data)) {
+    
+
+    # Unnest ACC data
+    data <- prep_ACC(data, interpolate = FALSE) %>%
+      mutate(ID = mt_track_id(.)) 
+
+    
+    # Set up threshold table
+    thresh <- data.frame(
+      track = unique(mt_track_id(data)),
+      thresx = NA, thresy = NA, thresz = NA
+    )
+    
+    roostpoints <- data %>%
+      filter(behav == "SRoosting") %>%
+      as.data.frame() %>%      
+      group_by(ID) %>%
+      dplyr::summarise(
+        thresx = quantile(var_acc_x, probs = 0.95, na.rm = T) %>% as.vector(),
+        thresy = quantile(var_acc_y, probs = 0.95, na.rm = T) %>% as.vector(),
+        thresz = quantile(var_acc_z, probs = 0.95, na.rm = T) %>% as.vector()
+      )
+    
+    data %<>% 
+      left_join(roostpoints, by = "ID") %>%
+      select(-ID) %>%
+      mutate(behav = case_when(
+        
+        # If any ACC values exceed their threshold, reclassify to feeding
+        (behav != "STravelling") & (var_acc_x > thresx) ~ "SFeeding",
+        (behav != "STravelling") & (var_acc_y > thresy) ~ "SFeeding",
+        (behav != "STravelling") & (var_acc_z > thresz) ~ "SFeeding",
+        TRUE ~ behav
+      )) %>%
+      mt_as_track_attribute(c("thresx", "thresy", "thresz")) 
+    
+    # Clean track data (remove NA columns)
+    not_all_na <- function(x) any(!is.na(x))
+    data <- mt_set_track_data(data, mt_track_data(data) %>% select(where(not_all_na))) 
+    
+    
+  }
+  
+  
+  
+  
+  # Cumulative Time Reassignment ---------------------------------------------------------
   
   # We fit the second-stage model for each animal, and then re-stack the data into a move2 object
   newdat <- list()
