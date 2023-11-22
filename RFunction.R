@@ -253,7 +253,7 @@ rFunction = function(data, rooststart, roostend, travelcut,
   
   
   ## Altitude Reclassification -------------------------------------------------
-  
+
       #' If a bird is ascending, it is STravelling
       #' If a bird is flatlining, it remains SResting
       #' If a bird is descending, 
@@ -325,6 +325,7 @@ rFunction = function(data, rooststart, roostend, travelcut,
   
   ## Roosting Reclassification -----------------------------------------------------------------------------------------------
   
+  
   data %<>% mutate(
     # Mark final point at night and first point in morning
     endofday = case_when(
@@ -347,23 +348,50 @@ rFunction = function(data, rooststart, roostend, travelcut,
   endofday_dist = NA
   )
   
-  # Generate distance between last/first points
-  for (row in 1:nrow(data)) {
-    if (is.na(data$endofday[row])) {next} else {
-      if (data$endofday[row] == "FIRST") {
-         dist <- st_distance(
-          data[row,],
-          data[row + 1,]
-        ) %>% units::set_units("metres")
-      
-      data$endofday_dist[row] <- dist
-      }
-    }
-  }
+  
+  # data %<>% 
+  #   group_by(mt_track_id(.)) %>%
+  #   rowwise() %>%
+  #   mutate(
+  #     endofday_dist = case_when(
+  #       is.na(lag(endofday_index)) ~ NA,
+  #       !is.na(lag(endofday_index)) ~ st_distance(
+  #         .$geometry[row_number() - 1],
+  #         .$geometry[row_number()]
+  #       )
+  #   )
+  # )
+  
+  # Add an efficient 'overnight distance' column
+  data %<>% 
+    mutate(endofday_dist = mt_distance(.)) %>%
+    mutate(endofday_dist = case_when(
+      endofday == "FINAL" ~ endofday_dist,
+      TRUE ~ NA
+    ),
+    endofday_dist = endofday_dist %>% units::set_units("metres")
+    )
+  
+  # 
+  # # Generate distance between last/first points
+  # for (row in 1:nrow(data)) {
+  #   if (is.na(data$endofday[row])) {next} else {
+  #     if (data$endofday[row] == "FIRST") {
+  #        dist <- st_distance(
+  #         data[row,],
+  #         data[row + 1,]
+  #       ) %>% units::set_units("metres")
+  #     
+  #     data$endofday_dist[row] <- dist
+  #     }
+  #   }
+  # }
+  
+  
   
   data %<>% mutate(
     roostsite = ifelse(
-      !is.na(endofday_dist) & endofday_dist < 25,
+      !is.na(endofday_dist) & endofday_dist < units::set_units(25, "metres"),
       1, 0
     )
   ) %>% select(-endofday_index)
