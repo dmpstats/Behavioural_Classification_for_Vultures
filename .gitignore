@@ -12,3 +12,15 @@ appspec.json_DEPRECATED.json
 tests/testthat/.behavsummary.csv
 tests/testthat/.birdtrack_Prinzesschen.png
 data/raw/sunrise.rds
+data/raw/asavannah-meft_processed_acc_merged.rds
+data/raw/gaia_processed_acc_merged.rds
+data/raw/kendal_Tanzania_processed.rds
+data/raw/lifetrack_south_africa_processed_acc_merged.rds
+data/raw/namibia_SOP_processed_acc_merged.rds
+
+data/raw/pan-africa_vultures_processed.rds
+
+data/raw/south_africa_VfA_MPIAB.rds
+data/raw/wcs_Ruaha-Katavi_processed.rds
+data/raw/WhitebackedVulturesZambiaKendall_processed.rds
+gather_and_encrypt_test_datasets.r
