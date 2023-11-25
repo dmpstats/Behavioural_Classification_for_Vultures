@@ -207,7 +207,22 @@ rFunction = function(data, rooststart, roostend, travelcut,
     stop("altbound (altitude threshold) is non-numeric. Please check input settings")
   }
   
-  logger.trace("Input is in correct format. Proceeding with first-stage classification for all IDs")
+  
+  logger.info("Input is in correct format. Proceeding with first-stage classification for all IDs")
+  
+  
+  # Input data pre-prep -----------------------------------------------------------------------------------------------
+  
+  # extract relevant move2 attributes
+  trk_id_col <- mt_track_id_column(data)
+  time_id_col <- mt_time_column(data)
+  
+  data <- data |> 
+    # drop events with missing timestamps
+    dplyr::filter(!is.na(.data[[time_id_col]])) |> 
+    # order by time within track
+    dplyr::arrange(.data[[trk_id_col]], .data[[time_id_col]])
+  
   
   
   # First-Stage Classification --------------------------------------------------------------------------------------
