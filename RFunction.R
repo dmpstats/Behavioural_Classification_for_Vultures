@@ -205,8 +205,6 @@ rFunction = function(data,
   }
   
   if(!is.numeric(altbound)) {
-    logger.warn("altbound is non-numeric. Stopping computation - please check inputs")
-    stop("altbound (altitude threshold) is non-numeric. Please check input settings")
   }
   
   
