@@ -167,16 +167,16 @@ rFunction = function(data, rooststart, roostend, travelcut,
   
   if(!all(between(c(rooststart, roostend), 0, 24))) {
     logger.fatal("Start or end of roosting hours is not a valid hour. Terminating workflow - please use valid settings")
-    stop("Start or end of roosting hours is not a valid hour. Terminating workflow - please use valid settings")
+    stop("Start (`rooststart`) or end (`roostend`) of roosting hours is not a valid hour. Terminating workflow - please use valid settings")
   }
   
   if(rooststart < roostend) {
     logger.warn("This MoveApp is not yet optimised for nocturnal species. Classifications will be inaccurate and errors may be thrown")
   }
   
-  if(travelcut <=  0 | !is.numeric(travelcut)) {
+  if(travelcut <= 0 | !is.numeric(travelcut)) {
     logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
-    stop("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
+    stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
   }
   
   if (use_sunrise == TRUE & "sunrise_timestamp" %!in% colnames(data)) {
