@@ -114,12 +114,15 @@ prep_ACC <- function(data, interpolate = FALSE) {
 
 # Main RFunction -------------------------------------------------------------------------------------
 
-rFunction = function(data, rooststart, roostend, travelcut,
+rFunction = function(data, 
+                     rooststart, 
+                     roostend, 
+                     travelcut,
                      create_plots = TRUE,
                      use_sunrise = FALSE,
                      sunrise_leeway = 0,
                      sunset_leeway = 0,
-                     altbound = 25 #, 
+                     altbound = 25
                      # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
                      ) {
   
@@ -188,9 +191,8 @@ rFunction = function(data, rooststart, roostend, travelcut,
     use_sunrise <- FALSE
   }
   
-  if(all(c("sunrise_timestamp", "sunset_timestamp") %in% colnames(data)) & 
-     (use_sunrise == TRUE)) {
-    logger.trace("Sunrise and sunset columns identified. Able to perform sunrise-sunset classification")
+  if(all(c("sunrise_timestamp", "sunset_timestamp") %in% colnames(data)) & (use_sunrise == TRUE)) {
+    logger.info("Sunrise and sunset columns identified. Able to perform sunrise-sunset classification")
   }
   
   if(is.null(sunrise_leeway)) {
