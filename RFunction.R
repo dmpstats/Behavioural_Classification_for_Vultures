@@ -205,6 +205,13 @@ rFunction = function(data,
   }
   
   if(!is.numeric(altbound)) {
+    stop("`altbound` (altitude threshold) is non-numeric. Please check input settings")
+  } else if(altbound == 0){
+    logger.warn(
+      paste0("Beware that altitude threshold (`altbound`) is set to 0m, which ",
+      "means that ANY change is altitude will be considered as ascencing/descending ",
+      "movement.")
+    )
   }
   
   
