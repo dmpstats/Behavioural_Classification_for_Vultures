@@ -234,29 +234,25 @@ rFunction = function(data,
   
   # First-Stage Classification --------------------------------------------------------------------------------------
   
-  needcols <- c("hourmin", "yearmonthday")
-  if(!all(needcols %in% colnames(data))) {
-    data %<>% dplyr::mutate(
-      hourmin = hour(mt_time(.)) + minute(mt_time(.))/60 + second(mt_time(.))/3600,
-      yearmonthday = stringr::str_replace_all(stringr::str_sub(lubridate::date(mt_time(data)), 1, 10), "-", "")
-    )
+  ## Derive required columns, if not already present in input
+  if("hourmin" %!in% colnames(data)){
+    data$hourmin <- hour(mt_time(data)) + minute(mt_time(data))/60 + second(mt_time(data))/3600
   }
-  
-  # Generate necessary data
-  data$dist_m <- as.vector(move2::mt_distance(data))
-  data$kmph <- move2::mt_speed(data) %>% units::set_units("km/h") %>% as.vector()
-  #data$timediff_hrs <- lubridate::mt_time_lags(data)
-  data %<>% 
-    arrange(mt_track_id(data), mt_time(data)) %>%
-    # distinct(timestamp, .keep_all = TRUE) %>%
-    mutate(
-      #dist_m = sqrt((x - lag(x, default = NA))^2 + (y - lag(y, default = NA))^2),
-      timediff_hrs =   mt_time_lags(.) %>%
-        units::set_units("hours") %>%
-        as.vector(),
-      #kmph = move2::mt_speed(data),
-      hour = lubridate::hour(mt_time(data))
-    ) 
+  if("yearmonthday" %!in% colnames(data)){
+    data$yearmonthday <- stringr::str_replace_all(stringr::str_sub(lubridate::date(mt_time(data)), 1, 10),  "-", "")
+  }
+  if("dist_m" %!in% colnames(data)){
+    data$dist_m <- as.vector(move2::mt_distance(data))
+  }
+  if("kmph" %!in% colnames(data)){
+    data$kmph <- move2::mt_speed(data) %>% units::set_units("km/h") %>% as.vector()
+  }
+  if("timediff_hrs" %!in% colnames(data)){
+    data$timediff_hrs <- mt_time_lags(data) %>% units::set_units("hours") %>% as.vector()
+  }
+  if("hour" %!in% colnames(data)){
+    data$hour <- lubridate::hour(mt_time(data))
+  }
   
   
   ## Speed Classification -----------------------------------------------------
