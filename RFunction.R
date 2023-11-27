@@ -269,7 +269,7 @@ rFunction = function(data, rooststart, roostend, travelcut,
     data %<>% dplyr::mutate(
       
       altitude = as.numeric(unlist(altitude)), # fix when input is character vector
-      
+
       altdiff = ifelse(!is.na(altitude) & !is.na(dplyr::lead(altitude)), dplyr::lead(altitude) - altitude, NA),
       
       altchange = case_when(
