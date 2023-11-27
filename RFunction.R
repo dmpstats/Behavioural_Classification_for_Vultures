@@ -285,28 +285,31 @@ rFunction = function(data,
   if ("altitude" %in% colnames(data)) {
     logger.info("Altitude column identified. Beginning altitude classification")
 
-
     # Classify altitude changes
-    data %<>% dplyr::mutate(
-      
-      altitude = as.numeric(unlist(altitude)), # fix when input is character vector
-      
-      altdiff = dplyr::lead(altitude) - altitude,
-      
-      altchange = dplyr::case_when(
-        altdiff < -altbound ~ "descent",
-        altdiff > altbound ~ "ascent",
-        is.na(altdiff) ~ "flatline",
-        TRUE ~ "flatline"
-      ))
-    
-    data %<>%
-      dplyr::mutate(
-        behav = dplyr::case_when(
-          (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
-          (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
-          TRUE ~ behav
-        ))
+    data <- data |> 
+      split(data[[trk_id_col]]) |> 
+      map(\(x){
+        x |> 
+          dplyr::mutate(
+            altitude = as.numeric(unlist(altitude)), # fix when input is character vector
+            # altitude change to next location event
+            altdiff = dplyr::lead(altitude) - altitude,
+            # identify vertical movement, given `altbound`
+            altchange = dplyr::case_when(
+              altdiff < -altbound ~ "descent",
+              altdiff > altbound ~ "ascent",
+              is.na(altdiff) ~ "flatline",
+              TRUE ~ "flatline"
+            ),
+            # re-classify behaviour based on vertical movement
+            behav = dplyr::case_when(
+              (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
+              (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
+              TRUE ~ behav
+            )
+          )
+      }) |> 
+      mt_stack()
     
   } else {
     logger.warn("No column named 'altitude' present. Skipping altitude classification")
