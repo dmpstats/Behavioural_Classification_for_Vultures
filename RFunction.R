@@ -302,11 +302,12 @@ rFunction = function(data,
 
     
     data %<>%
-      mutate(behav = case_when(
-        (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
-        (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
-        TRUE ~ behav
-      ))
+      dplyr::mutate(
+        behav = dplyr::case_when(
+          (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
+          (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
+          TRUE ~ behav
+        ))
     
   } else {
     logger.warn("No column named 'altitude' present. Skipping altitude classification")
