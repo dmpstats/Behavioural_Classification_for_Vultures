@@ -293,12 +293,12 @@ rFunction = function(data,
       
       altdiff = dplyr::lead(altitude) - altitude,
       
-      altchange = case_when(
-                       altdiff < -altbound ~ "descent",
-                       altdiff > altbound ~ "ascent",
-                       is.na(altdiff) ~ "flatline",
-                       TRUE ~ "flatline"
-                     ))
+      altchange = dplyr::case_when(
+        altdiff < -altbound ~ "descent",
+        altdiff > altbound ~ "ascent",
+        is.na(altdiff) ~ "flatline",
+        TRUE ~ "flatline"
+      ))
     
     data %<>%
       dplyr::mutate(
