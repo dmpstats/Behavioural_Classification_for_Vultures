@@ -77,7 +77,7 @@ Move2 location object, with additional columns:
 
 `Sunset leeway`: The equivalent of `Sunrise leeway` for sunset, and determines what time *night-time,* or roosting hours, begin. Stationary behaviour after this time, and before the next determined *daytime*, is classified as *Roosting.*
 
-`Altitude change threshold`: The absolute change in altitude (in metres) beyond which a bird is assumed to have significant altitude change. For example, a threshold of 25m means that a bird whose altitude increases by over 25m is assumed to be `ascending`, and `descending` if its altitude decreases by over 25m. This information is used in the first-stage classification.
+`Altitude change threshold` (`altbound`): Numeric, the absolute change in altitude (in metres) beyond which a bird is assumed to have significant altitude change. For example, a threshold of 25m means that a bird whose altitude increases by over 25m is assumed to be `ascending`, and `descending` if its altitude decreases by over 25m. This information is only used if column `altitude` is present in the input data, and is used in the first-stage classification.
 
 ### Most common errors
 

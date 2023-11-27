@@ -45,7 +45,7 @@
     {
       "id": "altbound",
       "name": "Altitude change threshold (metres):",
-      "description": "This is the absolute change in altitude which beyond a bird is classified as ascending/descending. For example, setting this to 25 means that the bird is ascending when its change in altitude is above 25m, and descending when below -25m.",
+      "description": "This is the absolute change in altitude between consecutive locations beyond which a bird is classified as ascending/descending. For example, setting this to 25 means that the bird is ascending when its change in altitude is above 25m, and descending when below -25m. This information is only used if column `altitude` is present in the input data.",
       "defaultValue": 25,
       "type": "DOUBLE"
     },
