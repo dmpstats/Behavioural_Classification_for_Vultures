@@ -291,7 +291,7 @@ rFunction = function(data,
       
       altitude = as.numeric(unlist(altitude)), # fix when input is character vector
       
-      altdiff = ifelse(!is.na(altitude) & !is.na(dplyr::lead(altitude)), dplyr::lead(altitude) - altitude, NA),
+      altdiff = dplyr::lead(altitude) - altitude,
       
       altchange = case_when(
                        altdiff < -altbound ~ "descent",
@@ -299,7 +299,6 @@ rFunction = function(data,
                        is.na(altdiff) ~ "flatline",
                        TRUE ~ "flatline"
                      ))
-
     
     data %<>%
       dplyr::mutate(
