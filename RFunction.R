@@ -369,7 +369,7 @@ rFunction = function(data,
   )
   
   # Generate distance between last/first points
-  for (row in 1:nrow(data)) {
+  for (row in 1:(nrow(data) - 1)) {
     if (is.na(data$endofday[row])) {next} else {
       if (data$endofday[row] == "FIRST") {
          dist <- st_distance(
