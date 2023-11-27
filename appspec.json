@@ -16,19 +16,11 @@
     },
     {
       "id": "travelcut",
-      "name": "Upper speed bound for 'stationary' beahviour",
+      "name": "Upper speed bound for 'stationary' behaviour",
       "description": "Insert the upper speed cutoff (in km/h) for behaviour to be classified as 'stationary'. ",
       "defaultValue": 3,
       "type": "DOUBLE"
     },
-    {
-      "id": "create_plots",
-      "name": "Create summary plots",
-      "description": "Check this to generate, as artefacts, simple location plots of each bird's behaviourally-classified movements",
-      "defaultValue": false,
-      "type": "CHECKBOX"
-    },
-
     {
       "id": "use_sunrise",
       "name": "Use provided sunrise-sunset hours",
@@ -57,6 +49,13 @@
       "defaultValue": 25,
       "type": "DOUBLE"
     },
+    {
+      "id": "create_plots",
+      "name": "Create summary plots",
+      "description": "Check this to generate, as artefacts, simple location plots of each bird's behaviourally-classified movements",
+      "defaultValue": false,
+      "type": "CHECKBOX"
+    }
   ],
   "dependencies": {
     "R": [
@@ -165,7 +164,7 @@
         "creator"
       ],
       "orcid": null,
-      "affiliation": "DMP Stats",
+      "affiliation": "DMP Statistical Solutions",
       "affiliationRor": null
     }
   ],
@@ -173,13 +172,17 @@
     {
       "name": "University of St Andrews",
       "comment": null
+    },
+    {
+      "name": "North Carolina Zoo, US",
+      "comment": null
     }
   ],
   "references": [
 
   ],
   "documentation": {
-    "url": "https://github.com/callumjclarke/Behavioural_Classification_for_Vultures/README.md"
+    "url": "https://github.com/dmpstats/Behavioural_Classification_for_Vultures/blob/master/README.md"
   }
 }
 
