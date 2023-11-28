@@ -323,16 +323,16 @@ rFunction = function(data,
   
   
   if (use_sunrise == TRUE) {
-    data %<>%
-      mutate(behav = case_when(
-        (behav == "SResting") & (!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway))) ~ "SRoosting",
-        TRUE ~ behav
-      ),
-      # Add column to define nightpoints:
-      nightpoint = ifelse(!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway)), 1, 0)
-      
-      # Non-sunrise-sunset option:
+    data <- data |> 
+      dplyr::mutate(
+        # Add column to define nightpoints
+        nightpoint = !dplyr::between(.data[[time_id_col]], sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway)),
+        behav = dplyr::case_when(
+          (behav == "SResting") & nightpoint ~ "SRoosting",
+          TRUE ~ behav
+        )
       )
+  
   } else {
     data %<>%
       mutate(behav = case_when(
