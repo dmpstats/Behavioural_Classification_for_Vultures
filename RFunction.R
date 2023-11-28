@@ -348,20 +348,7 @@ rFunction = function(data, rooststart, roostend, travelcut,
   endofday_dist = NA
   )
   
-  
-  # data %<>% 
-  #   group_by(mt_track_id(.)) %>%
-  #   rowwise() %>%
-  #   mutate(
-  #     endofday_dist = case_when(
-  #       is.na(lag(endofday_index)) ~ NA,
-  #       !is.na(lag(endofday_index)) ~ st_distance(
-  #         .$geometry[row_number() - 1],
-  #         .$geometry[row_number()]
-  #       )
-  #   )
-  # )
-  
+
   # Add an efficient 'overnight distance' column
   data %<>% 
     mutate(endofday_dist = mt_distance(.)) %>%
@@ -371,21 +358,6 @@ rFunction = function(data, rooststart, roostend, travelcut,
     ),
     endofday_dist = endofday_dist %>% units::set_units("metres")
     )
-  
-  # 
-  # # Generate distance between last/first points
-  # for (row in 1:nrow(data)) {
-  #   if (is.na(data$endofday[row])) {next} else {
-  #     if (data$endofday[row] == "FIRST") {
-  #        dist <- st_distance(
-  #         data[row,],
-  #         data[row + 1,]
-  #       ) %>% units::set_units("metres")
-  #     
-  #     data$endofday_dist[row] <- dist
-  #     }
-  #   }
-  # }
   
   
   
