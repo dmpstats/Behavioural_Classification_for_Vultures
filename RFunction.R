@@ -287,29 +287,26 @@ rFunction = function(data,
 
     # Classify altitude changes
     data <- data |> 
-      split(data[[trk_id_col]]) |> 
-      map(\(x){
-        x |> 
-          dplyr::mutate(
-            altitude = as.numeric(unlist(altitude)), # fix when input is character vector
-            # altitude change to next location event
-            altdiff = dplyr::lead(altitude) - altitude,
-            # identify vertical movement, given `altbound`
-            altchange = dplyr::case_when(
-              altdiff < -altbound ~ "descent",
-              altdiff > altbound ~ "ascent",
-              is.na(altdiff) ~ "flatline",
-              TRUE ~ "flatline"
-            ),
-            # re-classify behaviour based on vertical movement
-            behav = dplyr::case_when(
-              (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
-              (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
-              TRUE ~ behav
-            )
-          )
-      }) |> 
-      mt_stack()
+      group_by(.data[[trk_id_col]]) |> 
+      dplyr::mutate(
+        altitude = as.numeric(unlist(altitude)), # fix when input is character vector
+        # altitude change to next location event
+        altdiff = dplyr::lead(altitude) - altitude,
+        # identify vertical movement, given `altbound`
+        altchange = dplyr::case_when(
+          altdiff < -altbound ~ "descent",
+          altdiff > altbound ~ "ascent",
+          is.na(altdiff) ~ "flatline",
+          TRUE ~ "flatline"
+        ),
+        # re-classify behaviour based on vertical movement
+        behav = dplyr::case_when(
+          (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
+          (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
+          TRUE ~ behav
+        )
+      ) |> 
+      ungroup()
     
   } else {
     logger.warn("No column named 'altitude' present. Skipping altitude classification")
