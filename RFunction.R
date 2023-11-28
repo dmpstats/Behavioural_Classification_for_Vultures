@@ -410,6 +410,9 @@ rFunction = function(data,
     ) %>%
     select(-c("endofday", "roostsite", "mt_track_id(.)", "date(mt_time(.))"))
   
+  # derived columns NOT USED in classification
+  # - "roostsite", amd thus "endofday_dist", "endofday"
+  
   
     ## Accelerometer Classification -----------------------------------------------------------------------------------------------
   
