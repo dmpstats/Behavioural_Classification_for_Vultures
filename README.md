@@ -2,7 +2,7 @@
 
 MoveApps
 
-Github repository: *github.com/callumjclarke/Behavioural_Classification_for_Vultures*
+Github repository: *https://github.com/dmpstats/Behavioural_Classification_for_Vultures*
 
 ## Description
 
@@ -63,19 +63,19 @@ Move2 location object, with additional columns:
 
 ### Settings
 
-`Start of Roosting Hours` (integer): The predicted hour beyond which this species will be roosting.
+`Start of Roosting Hours` (`rooststart`): Integer, the predicted hour beyond which this species will be roosting. Default: 18.
 
-`End of Roosting Hours` (integer): The predicted hour at which the species' night-roost will end.
+`End of Roosting Hours` (`roostend`): Integer, the predicted hour at which the species' night-roost will end. Default: 7.
 
-`Upper speed bound for Stationary Behaviour`: The speed (in km/h) beyond which this species is assumed to be travelling. Default is 3 km/h.
+`Upper speed bound for Stationary Behaviour` (`travelcut`): Numeric, the speed (in km/h) beyond which this species is assumed to be travelling. Default is 3 km/h.
 
-`Create Plots` (logical): Select this option to generate a `birdtrack.png` plot artefact for each ID within the input data. See below for details.
+`Create Plots` (`create_plots`): Select this option to generate a `birdtrack.png` plot artefact for each ID within the input data. See below for details.
 
-`Use Provided Sunrise Hours`: Determines whether to use sunrise-sunset timestamps provided within the input data. **Warning: You *must* have used the 'Add Local and Solar Time' MoveApp earlier in the workflow to create this data.**
+`Use Provided Sunrise Hours` (`use_sunrise`): Determines whether to use sunrise-sunset timestamps provided within the input data. **Warning: You *must* have used the 'Add Local and Solar Time' MoveApp earlier in the workflow to create this data.**
 
-`Sunrise leeway`: The number of minutes after (or before, if negative) that *daytime* is considered to begin. *Daytime* is the period in which stationary behaviour is **not** classified as *Roosting*. For example `Sunrise leeway = 10` means that the bird's roost is assumed to end 10 minutes *after* sunrise.
+`Sunrise leeway` (`sunrise_leeway`): Integer, the number of minutes after (or before, if negative) that *daytime* is considered to begin. *Daytime* is the period in which stationary behaviour is **not** classified as *Roosting*. For example `Sunrise leeway = 10` means that the bird's roost is assumed to end 10 minutes *after* sunrise.
 
-`Sunset leeway`: The equivalent of `Sunrise leeway` for sunset, and determines what time *night-time,* or roosting hours, begin. Stationary behaviour after this time, and before the next determined *daytime*, is classified as *Roosting.*
+`Sunset leeway` (`sunset_leeway`): Integer, the equivalent of `Sunrise leeway` for sunset, and determines what time *night-time,* or roosting hours, begin. Stationary behaviour after this time, and before the next determined *daytime*, is classified as *Roosting.*
 
 `Altitude change threshold` (`altbound`): Numeric, the absolute change in altitude (in metres) beyond which a bird is assumed to have significant altitude change. For example, a threshold of 25m means that a bird whose altitude increases by over 25m is assumed to be `ascending`, and `descending` if its altitude decreases by over 25m. This information is only used if column `altitude` is present in the input data, and is used in the first-stage classification.
 
@@ -85,7 +85,7 @@ Move2 location object, with additional columns:
 
 -   Selecting to `Use Provided Sunrise Hours` without having previously generated the hours using the **Add Local and Solar Time MoveApp** will throw an error
 
--   The first location associated with each ID cannot be classified, as there is no lagged event to allow speed or time calculations. Therefore, one location (the earliest) for each ID will be classified as `Unknown`
+-   The last location associated with each animal ID cannot be classified, as there is no lagged event to allow speed or time calculations. Therefore, one location (the latest) for each ID will be classified as `Unknown`
 
 ### Null or error handling
 
