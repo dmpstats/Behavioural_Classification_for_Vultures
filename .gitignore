@@ -17,3 +17,4 @@ data/raw/GAIA_test.rds
 data/raw/Tanz_full.rds
 data/raw/keep_fake_essentials.R
 plot_ACC.R
+.env

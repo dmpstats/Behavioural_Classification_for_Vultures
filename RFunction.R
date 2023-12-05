@@ -167,24 +167,19 @@ rFunction = function(data, travelcut,
   
   # CLASSIFICATION STEPS --------------------------------------------------------------------------------------
   
+  # Generate necessary data:
   data %<>% dplyr::mutate(
     ID = mt_track_id(.),
-    timestamp = mt_time(.),
-    #hourmin = hour(mt_time(.)) + minute(mt_time(.))/60 + second(mt_time(.))/3600,
-    yearmonthday = ifelse(
-      
-      # IMPORTANT: Cut this 'ifelse' statement when "timestamp_local" is added to preprocessing's essential columns 
-      # and use only the top line (i.e. a dependency on "timestamp_local")
-      
-      # Use local time if available
-      # Revert to UTC timestamp if not
-      "timestamp_local" %in% colnames(data),
-      stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""),
-      stringr::str_replace_all(stringr::str_sub(timestamp, 1, 10), "-", "")
-    ) 
+    timestamp = mt_time(.)
   )
   
-  # Generate necessary data
+  if ("timestamp_local" %in% colnames(data)) {
+    data %<>% mutate(yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""))
+  } else {
+    data %<>% mutate(yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp, 1, 10), "-", ""))                     
+  }
+  
+  # Generate necessary data:
   data$dist_m <- as.vector(move2::mt_distance(data))
   data$kmph <- move2::mt_speed(data) %>% units::set_units("km/h") %>% as.vector()
   #data$timediff_hrs <- lubridate::mt_time_lags(data)
@@ -341,6 +336,7 @@ rFunction = function(data, travelcut,
   
   
   ## 5. Roosting Reclassification Prep -----------------------------------------------------------------------------------------------
+  
   
   logger.info("[5] Preparing overnight-roost data")
   
