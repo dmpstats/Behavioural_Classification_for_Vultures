@@ -1,10 +1,8 @@
 {
     "travelcut": 3,
-    "rooststart": 18,
-    "roostend": 7,
     "create_plots": true,
-    "use_sunrise": true,
     "sunrise_leeway": -15, 
     "sunset_leeway": 15,
-    "altbound": 25
+    "altbound": 25,
+    "keepAllCols": true
 }

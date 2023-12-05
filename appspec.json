@@ -1,20 +1,6 @@
 {
   "settings": [
     {
-      "id": "rooststart",
-      "name": "Insert mean hour of nightroost beginning",
-      "description": "Insert, in 24-hour integer format, the hour beyond which subjects are assumed to be nightroosting.",
-      "defaultValue": 18,
-      "type": "INTEGER"
-    },
-    {
-      "id": "roostend",
-      "name": "Insert mean hour of nightroost ending",
-      "description": "Insert, in 24-hour integer format, the hour before which subjects are assumed to be nightroosting.",
-      "defaultValue": 7,
-      "type": "INTEGER"
-    },
-    {
       "id": "travelcut",
       "name": "Upper speed bound for 'stationary' beahviour",
       "description": "Insert the upper speed cutoff (in km/h) for behaviour to be classified as 'stationary'. ",
@@ -25,14 +11,6 @@
       "id": "create_plots",
       "name": "Create summary plots",
       "description": "Check this to generate, as artefacts, simple location plots of each bird's behaviourally-classified movements",
-      "defaultValue": false,
-      "type": "CHECKBOX"
-    },
-
-    {
-      "id": "use_sunrise",
-      "name": "Use provided sunrise-sunset hours",
-      "description": "Check this to perform day-night classification using provided sunrise and sunset data. WARNING: You must have used the 'Add Local and Solar Time' MoveApp before this operation to create columns 'sunrise_timestamp' and 'sunset_timestamp'. ",
       "defaultValue": false,
       "type": "CHECKBOX"
     },
@@ -57,6 +35,13 @@
       "defaultValue": 25,
       "type": "DOUBLE"
     },
+    {
+      "id": "keepAllCols",
+      "name": "Keep all generated columns:",
+      "description": "Select this to keep all generated columns. This stores all data used within the classification outputs within the output. We recommend that this is only selected for debugging.",
+      "defaultValue": false,
+      "type": "CHECKBOX"
+    }
   ],
   "dependencies": {
     "R": [

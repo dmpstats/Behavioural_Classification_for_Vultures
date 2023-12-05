@@ -111,12 +111,12 @@ prep_ACC <- function(data, interpolate = FALSE) {
 
 # Main RFunction -------------------------------------------------------------------------------------
 
-rFunction = function(data, rooststart, roostend, travelcut,
+rFunction = function(data, travelcut,
                      create_plots = TRUE,
-                     use_sunrise = FALSE,
                      sunrise_leeway = 0,
                      sunset_leeway = 0,
-                     altbound = 25 #, 
+                     altbound = 25,
+                     keepAllCols = FALSE
                      # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
                      ) {
   
@@ -143,14 +143,12 @@ rFunction = function(data, rooststart, roostend, travelcut,
   # standardModelPath <- paste0(getAppFilePath("standard_model", fallbackToProvidedFiles = TRUE), "standard_model.rds")
   # standardModel <- readRDS(standardModelPath)
   # 
-  # 
+
   
   # Check Input Data ----------------------------------------------------------------------------------------------
   
   logger.trace(paste0(
     "Input data provided:  \n", 
-    "rooststart: ", toString(rooststart), "\n", 
-    "roostend: ", toString(roostend), "\n",
     "travelcut: ", toString(travelcut), "\n",
     "sunrise_leeway: ", toString(sunrise_leeway), "\n", 
     "sunset_leeway: ", toString(sunset_leeway), "\n",
@@ -161,61 +159,30 @@ rFunction = function(data, rooststart, roostend, travelcut,
   if(nrow(data) == 0) {
     logger.warn("Input data is empty. Returning input.")
     return(data)}
-  
-  if(!all(between(c(rooststart, roostend), 0, 24))) {
-    logger.fatal("Start or end of roosting hours is not a valid hour. Terminating workflow - please use valid settings")
-    stop("Start or end of roosting hours is not a valid hour. Terminating workflow - please use valid settings")
-  }
-  
-  if(rooststart < roostend) {
-    logger.warn("This MoveApp is not yet optimised for nocturnal species. Classifications will be inaccurate and errors may be thrown")
-  }
-  
-  if(travelcut <=  0 | !is.numeric(travelcut)) {
-    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
-    stop("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
-  }
-  
-  if (use_sunrise == TRUE & "sunrise_timestamp" %!in% colnames(data)) {
-    logger.warn("'sunrise_timestamp' is not a column in the input data. Sunrise-sunset classification cannot be performed. Defaulting to manually provided roosting hours - please use the 'Add Local and Solar Time' MoveApp in this workflow before this App")
-    use_sunrise <- FALSE
-  }
-  if (use_sunrise == TRUE & "sunset_timestamp" %!in% colnames(data)) {
-    logger.warn("'sunset_timestamp' is not a column in the input data. Sunrise-sunset classification cannot be performed. Defaulting to manually provided roosting hours - please use the 'Add Local and Solar Time' MoveApp in this workflow before this App")
-    use_sunrise <- FALSE
-  }
-  
-  if(all(c("sunrise_timestamp", "sunset_timestamp") %in% colnames(data)) & 
-     (use_sunrise == TRUE)) {
-    logger.trace("Sunrise and sunset columns identified. Able to perform sunrise-sunset classification")
-  }
-  
-  if(is.null(sunrise_leeway)) {
-    logger.warn("No sunrise leeway provided as input. Defaulting to no leeway")
-    sunrise_leeway <- 0
-  }
-  if(is.null(sunset_leeway)) {
-    logger.warn("No sunset leeway provided as input. Defaulting to no leeway")
-    sunset_leeway <- 0
-  }
-  
-  if(!is.numeric(altbound)) {
-    logger.warn("altbound is non-numeric. Stopping computation - please check inputs")
-    stop("altbound (altitude threshold) is non-numeric. Please check input settings")
-  }
-  
-  logger.trace("Input is in correct format. Proceeding with first-stage classification for all IDs")
+
   
   
-  # First-Stage Classification --------------------------------------------------------------------------------------
+  logger.trace("Input is in correct format. Proceeding with classification for all IDs")
   
-  needcols <- c("hourmin", "yearmonthday")
-  if(!all(needcols %in% colnames(data))) {
-    data %<>% dplyr::mutate(
-      hourmin = hour(mt_time(.)) + minute(mt_time(.))/60 + second(mt_time(.))/3600,
-      yearmonthday = stringr::str_replace_all(stringr::str_sub(lubridate::date(mt_time(data)), 1, 10), "-", "")
-    )
-  }
+  
+  # CLASSIFICATION STEPS --------------------------------------------------------------------------------------
+  
+  data %<>% dplyr::mutate(
+    ID = mt_track_id(.),
+    timestamp = mt_time(.),
+    #hourmin = hour(mt_time(.)) + minute(mt_time(.))/60 + second(mt_time(.))/3600,
+    yearmonthday = ifelse(
+      
+      # IMPORTANT: Cut this 'ifelse' statement when "timestamp_local" is added to preprocessing's essential columns 
+      # and use only the top line (i.e. a dependency on "timestamp_local")
+      
+      # Use local time if available
+      # Revert to UTC timestamp if not
+      "timestamp_local" %in% colnames(data),
+      stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""),
+      stringr::str_replace_all(stringr::str_sub(timestamp, 1, 10), "-", "")
+    ) 
+  )
   
   # Generate necessary data
   data$dist_m <- as.vector(move2::mt_distance(data))
@@ -234,39 +201,54 @@ rFunction = function(data, rooststart, roostend, travelcut,
     ) 
   
   
-  ## Speed Classification -----------------------------------------------------
+  ## 1. Speed Classification Prep -----------------------------------------------------
+  
+  logger.info("[1] Preparing speed-classification data")
   
      #' Speed Classification
-     #' Anything above 3km/h is STravelling
+     #' Anything above travelcut is STravelling
      #' Anything below is initially SResting
+     
+  if(travelcut <=  0 | !is.numeric(travelcut)) {
+    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
+    stop("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
+  }
 
   data %<>%
     mutate(
-      behav = case_when(
-        kmph < travelcut  ~ "SResting",
-        kmph > travelcut  ~ "STravelling",
-        TRUE ~ "Unknown"
-      ),
-      stationary = ifelse(behav=="STravelling", 0, 1)
+      stationary = case_when(
+        kmph < travelcut ~ 1,
+        kmph > travelcut ~ 0,
+        is.na(kmph) | is.nan(kmph) ~ 1, # assume stationary if no data 
+        TRUE ~ NA
+      )
     )
-  logger.info("Speed classification complete")
   
   
-  ## Altitude Reclassification -------------------------------------------------
   
+  ## 2. Altitude Reclassification Prep -------------------------------------------------
+
       #' If a bird is ascending, it is STravelling
       #' If a bird is flatlining, it remains SResting
       #' If a bird is descending, 
       #'      Next location is ascending/descending ==> STravelling
       #'      Next location is flatlining ==> remains SResting
   
+  logger.info("[2] Preparing altitude-classification data")
 
   if ("altitude" %in% colnames(data)) {
-    logger.info("Altitude column identified. Beginning altitude classification")
-
+    logger.trace("   Altitude column identified. Beginning altitude classification")
+    
+    if(!is.numeric(altbound)) {
+      logger.warn("    altbound is non-numeric. Stopping computation - please check inputs")
+      stop("    altbound (altitude threshold) is non-numeric. Please check input settings")
+    }
 
     # Classify altitude changes
-    data %<>% dplyr::mutate(
+    data %<>% 
+      # Reset altitude change each day:
+      group_by(ID, yearmonthday) %>%
+      dplyr::mutate(
       
       altitude = as.numeric(unlist(altitude)), # fix when input is character vector
 
@@ -277,101 +259,169 @@ rFunction = function(data, rooststart, roostend, travelcut,
                        altdiff > altbound ~ "ascent",
                        is.na(altdiff) ~ "flatline",
                        TRUE ~ "flatline"
-                     ))
+                     )) %>% 
+      ungroup()
 
     
-    data %<>%
-      mutate(behav = case_when(
-        (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
-        (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
-        TRUE ~ behav
-      ))
+
     
   } else {
-    logger.warn("No column named 'altitude' present. Skipping altitude classification")
+    
+    logger.warn("    No column named 'altitude' present. Skipping altitude classification")
+    
   }
   
   
-  # Day-Night Reclassification --------------------------------------------------
+  ## 3. Day-Night Reclassification Prep --------------------------------------------------
   
-      #' If a bird is SResting and it is night time, the bird is SRoosting
-      #' Otherwise, remains unchanged
+  logger.info("[3] Preparing day-night classification")
   
+  # Check all columns present & inputs valid
   
-  if (use_sunrise == TRUE) {
-    data %<>%
-      mutate(behav = case_when(
-        (behav == "SResting") & (!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway))) ~ "SRoosting",
-        TRUE ~ behav
-      ),
-      # Add column to define nightpoints:
-      nightpoint = ifelse(!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway)), 1, 0)
-      
-      # Non-sunrise-sunset option:
-      )
-  } else {
-    data %<>%
-      mutate(behav = case_when(
-        (behav == "SResting") & (!between(hour(mt_time(.)), roostend, rooststart)) ~ "SRoosting",
-        TRUE ~ behav
-      ),
-      nightpoint = ifelse(!between(hour(mt_time(.)), roostend, rooststart), 1, 0)
-      )
+  if ("timestamp_local" %!in% colnames(data)) {
+    logger.warn("   timestamp_local is not a column within the data. Overnight roosting classification may be flawed. Please use 'Add Local and Solar Time' MoveApp to generate this column.")
   }
-
+  if(is.null(sunrise_leeway)) {
+    logger.warn("    No sunrise leeway provided as input. Defaulting to no leeway")
+    sunrise_leeway <- 0
+  }
+  if(is.null(sunset_leeway)) {
+    logger.warn("    No sunset leeway provided as input. Defaulting to no leeway")
+    sunset_leeway <- 0
+  }
   
-  # Second-Stage Classification ----------------------------------------------------------------------------------
+  if ("sunrise_timestamp" %!in% colnames(data) | "sunset_timestamp" %!in% colnames(data)) {
+    logger.warn("    'sunrise_timestamp' or 'sunset timestamp' is not a column in the input data. Sunrise-sunset classification cannot be performed. Terminating - please use the 'Add Local and Solar Time' MoveApp in this workflow BEFORE this MoveApp")
+    stop()
+  } else {
+    logger.trace("    Sunrise and sunset columns identified. Able to perform sunrise-sunset classification")
+  }
   
-  
-  ## Roosting Reclassification -----------------------------------------------------------------------------------------------
-  
+  ### Add necessary columns
+  # Add 'nightpoint' column determining what is day/night:
   data %<>% mutate(
-    # Mark final point at night and first point in morning
-    endofday = case_when(
-    date(lead(mt_time(.))) != date(mt_time(.)) ~ "FINAL", # final point in day
-    date(lag(mt_time(.))) != date(mt_time(.)) ~ "FIRST" # first point in day 
-  ),
-  endofday = case_when(
-    # Adjust for middle-of-night points
-    endofday == "FIRST" & timediff_hrs > 2 & lag(timediff_hrs) > 2 ~ "MIDDLE",
-    TRUE ~ endofday
-  ),
-  endofday = case_when(
-    lag(endofday) == "MIDDLE" ~ "FIRST",
-    TRUE ~ endofday
-  ),
-  endofday_index = case_when(
-    endofday == "FINAL" ~ row_number(),
-    TRUE ~ NA
-    ),
-  endofday_dist = NA
+    nightpoint = ifelse(!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway)), 1, 0)
   )
   
-  # Generate distance between last/first points
-  for (row in 1:nrow(data)) {
-    if (is.na(data$endofday[row])) {next} else {
-      if (data$endofday[row] == "FIRST") {
-         dist <- st_distance(
-          data[row,],
-          data[row + 1,]
-        ) %>% units::set_units("metres")
-      
-      data$endofday_dist[row] <- dist
-      }
-    }
+
+
+
+  
+  
+  ## 4. Accelerometer Relassification Prep -----------------------------------------------------------------------------------------------
+  
+  
+  if ("acc_dt" %in% colnames(data)) {
+    
+    logger.info("[4] Accelerometer data identified: preparing and unnesting")
+    
+    # Unnest ACC data
+    data <- prep_ACC(data, interpolate = FALSE)
+    
+    
+    # Set up threshold table
+    thresh <- data.frame(
+      track = unique(mt_track_id(data)),
+      thresx = NA, thresy = NA, thresz = NA
+    )
+    
+
+    
+    # Clean track data (remove NA columns)
+    #not_all_na <- function(x) any(!is.na(x))
+    #data <- mt_set_track_data(data, mt_track_data(data) %>% select(where(not_all_na))) 
+    
+    ACCclassify <- TRUE
+    
+  } else {
+    logger.info("[4] No accelerometer data detected: skipping ACC preparation")
+    ACCclassify <- FALSE
   }
   
+  
+  
+  ## 5. Roosting Reclassification Prep -----------------------------------------------------------------------------------------------
+  
+  logger.info("[5] Preparing overnight-roost data")
+  
+  data %<>% 
+    mutate(temptime = mt_time(.)) %>%
+    group_by(ID, yearmonthday) %>%
+    mutate(
+      # Mark the first night point in the evening, and final in the morning:
+      endofday = case_when(
+        nightpoint == 1 & lag(nightpoint) == 0 ~ "FINAL",
+        nightpoint == 1 & lead(nightpoint) == 0 ~ "FIRST", 
+        TRUE ~ NA
+      ) ) %>% ungroup() %>%
+    
+    # Calculate time difference from each timestamp to sunrise/sunset (and their leeways):
+    mutate(
+      sunrise_difference = difftime(.$temptime, .$sunrise_timestamp + minutes(sunrise_leeway), units = "mins") %>% abs(),
+           sunset_difference = difftime(.$temptime, .$sunset_timestamp + minutes(sunset_leeway), units = "mins") %>% abs()
+    ) %>%
+    group_by(ID, yearmonthday) %>%
+    
+    mutate(closest = case_when(
+      # Mark the closest timestamps to sunrise/sunset, which will proxy for the absence of night points:
+        sunrise_difference == min(sunrise_difference, na.rm = T) ~ "SUNRISE",
+        sunset_difference == min(sunset_difference, na.rm = T) ~ "SUNSET", 
+      TRUE ~ NA
+    ))
+  
+  logger.trace("    Identifying locations for overnight roosting checks")
+  # Identify which days don't have night points in the morning/at night:
+  missing_nightpoints <- data %>%
+    as.data.frame() %>%
+    group_by(ID, yearmonthday) %>%
+    summarise(
+      morning = ifelse(any(endofday == "FIRST"), 1, 0),
+      evening = ifelse(any(endofday == "FINAL"), 1, 0),
+      .groups = "keep"
+    )
+  
+  # Join to data:
+  data %<>% left_join(missing_nightpoints, by = c("ID", "yearmonthday"))
+  
+  # And 'patch' these days up using the sunrise/sunset time-difference proxies:
+  data %<>% mutate(
+    endofday = case_when(
+      # If there is no morning point, but this is the nearest timestamp to sunset, 
+      # use it as a proxy:
+      is.na(endofday) & is.na(morning) & closest == "SUNRISE" ~ "FIRST",
+      # Same applies to evening:
+      is.na(endofday) & is.na(evening) & closest == "SUNSET" ~ "FINAL",
+      TRUE ~ endofday
+    )
+  ) %>% dplyr::select(-c("morning", "evening", "closest", "sunrise_difference", "sunset_difference"))
+  
+  # Shortcut for calculating night-distances:
+  # Filter dataset to only the marked final/first point
+  # Bind distance using mt_distance and keep only overnight distances
+  # then merge back into main dataset
+  logger.trace("    Generating overnight roosting distances")
+  nightdists <- data %>% 
+    filter(!is.na(endofday)) %>% 
+    ungroup() %>%
+    mutate(endofday_dist = mt_distance(.),
+           endofday_dist = ifelse(
+             endofday == "FINAL", endofday_dist, NA
+           )) %>%
+    as.data.frame() %>%
+    dplyr::select(c("ID", mt_time_column(.), "endofday_dist"))
+  data %<>% left_join(nightdists, by = c("ID", mt_time_column(.)))
+  # This gives us one overnight-distance measure at the end of each bird's day
   data %<>% mutate(
     roostsite = ifelse(
       !is.na(endofday_dist) & endofday_dist < 25,
       1, 0
     )
-  ) %>% select(-endofday_index)
+  ) 
   
-  
+  logger.trace("    Generating roost-group data")
   #  Calculate cumulative travel and reverse cumulative travel per day
   data %<>%
-    group_by(mt_track_id(.), date(mt_time(.))) %>%
+    group_by(ID, yearmonthday) %>%
     mutate(travel01 = ifelse(stationary == T, 0, 1)) %>%
     mutate(cum_trav = cumsum(travel01),
            revcum_trav = spatstat.utils::revcumsum(travel01)) %>%
@@ -381,32 +431,112 @@ rFunction = function(data, rooststart, roostend, travelcut,
            roostgroup = ifelse(cum_trav == 0 | revcum_trav == 0, 1, 0),
            roostgroup = rleid(roostgroup),
            roostgroup = ifelse(cum_trav != 0 & revcum_trav != 0, NA, roostgroup)
-           ) %>%
-    dplyr::select(-c("travel01", "cum_trav", "revcum_trav", "endofday_dist")) %>%
-    mutate(
-      # Reclassify these runs as roosting
-      behav = ifelse(!is.na(roostgroup), "SRoosting", behav)
-    ) %>%
-    select(-c("endofday", "roostsite", "mt_track_id(.)", "date(mt_time(.))"))
+           ) 
+
+  
+  ## 6. Cumulative Stationary Time Reassignment ------------------------------------------
+  
+  logger.info("[6] Preparing cumulative-time-spent-stationary data")
+
+  # This will be generated in the reclassification step
+  # as it needs to filter out any roostgroup locations
+  
+  # data %<>%
+  #   group_by(ID) %>%
+  #   mutate(
+  #     stationaryNotRoost = ifelse(stationary == 1 & behav != "SRoosting", 1, 0),
+  #     stationary_runLts = data.table::rleid(stationaryNotRoost == 1)     # id runs of stationary & non-stationary entries
+  #   ) %>%
+  #   group_by(ID, stationary_runLts) %>%
+  #   mutate(
+  #     cumtimestat = cumsum(as.numeric(timediff_hrs)), # compute cumulative time (hrs) spent stationary & non-stationary
+  #     cumtimestat = ifelse(stationaryNotRoost == 0 | cumtimestat < 0, 0, cumtimestat)
+  #   ) %>%
+  #   group_by(ID) %>%
+  #   mutate(
+  #     cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
+  #     cumtimestat_pctl_BC = 1 - ecdf(cumtimestat)(cumtimestat)                                               # Correct calculation?
+  #   )
   
   
-    ## Accelerometer Classification -----------------------------------------------------------------------------------------------
+  ## 7. Speed-Time Reclassification --------------------------------------------
   
-
-  if ("acc_dt" %in% colnames(data)) {
-    
-
-    # Unnest ACC data
-    data <- prep_ACC(data, interpolate = FALSE) %>%
-      mutate(ID = mt_track_id(.)) 
-
-    
-    # Set up threshold table
-    thresh <- data.frame(
-      track = unique(mt_track_id(data)),
-      thresx = NA, thresy = NA, thresz = NA
+  #logger.trace("[7] Preparing speed-time model data")
+  # This is where the second-stage models will go, once reworked
+  #'
+  #'
+  #'
+  #'
+  #'
+  #'
+  
+  
+  
+  # PERFORM CLASSIFICATION STEPS 1-7 -------------------------------------------------------
+  
+  logger.info("All data prepared. Performing all classification steps")
+  
+  
+  #### 1. Speed Classification ----
+  logger.info("[1] Performing speed classification")
+  data %<>% mutate(
+    # Add column to explain classification:
+    RULE = case_when(
+      kmph < travelcut ~ "[1] Low speed",
+      kmph > travelcut ~ "[1] High speed"
+    ), 
+    behav = case_when(
+      kmph < travelcut  ~ "SResting",
+      kmph > travelcut  ~ "STravelling",
+      TRUE ~ "Unknown"
     )
-    
+  )
+  
+  # Log results
+  logger.trace(paste0("   ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
+  logger.trace(paste0("   ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
+  
+  
+  #### 2. Altitude Classification ----
+  logger.info("[2] Performing altitude classification")
+  data %<>%
+    mutate(
+      RULE = case_when(
+        (behav == "SResting") & (altchange == "ascent") ~ "[2] Altitude increasing",
+        (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "[2] Altitude decreasing",
+        TRUE ~ RULE
+      ),
+      behav = case_when(
+      (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
+      (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
+      TRUE ~ behav
+    )
+)
+  # Log results
+  logger.trace(paste0("   ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))
+  
+  
+  #### 3. Sunrise-Sunset Classification -----
+  logger.info("[3] Performing night-time classification")
+  data %<>%
+    mutate(
+      RULE = case_when(
+        (behav == "SResting") & (nightpoint == 1) ~ "[3] Stationary at night",
+        TRUE ~ RULE
+      ),
+      behav = case_when(
+      (behav == "SResting") & (nightpoint == 1) ~ "SRoosting",
+      TRUE ~ behav
+    )
+)
+  logger.trace(paste0("   ", sum(data$RULE == "[3] Stationary at night", na.rm = T), " locations re-classified as SRoosting"))
+  
+  
+  
+  
+  #### 4. Accelerometer Classification -----
+  logger.info("[4] Performing accelerometer classification")
+  if (ACCclassify == TRUE) {
     roostpoints <- data %>%
       filter(behav == "SRoosting") %>%
       as.data.frame() %>%      
@@ -419,162 +549,92 @@ rFunction = function(data, rooststart, roostend, travelcut,
     
     data %<>% 
       left_join(roostpoints, by = "ID") %>%
-      select(-ID) %>%
-      mutate(behav = case_when(
-        
-        # If any ACC values exceed their threshold, reclassify to feeding
-        (behav != "STravelling") & (var_acc_x > thresx) ~ "SFeeding",
-        (behav != "STravelling") & (var_acc_y > thresy) ~ "SFeeding",
-        (behav != "STravelling") & (var_acc_z > thresz) ~ "SFeeding",
-        TRUE ~ behav
-      )) %>%
-      mt_as_track_attribute(c("thresx", "thresy", "thresz")) 
-    
-    # Clean track data (remove NA columns)
-    not_all_na <- function(x) any(!is.na(x))
-    data <- mt_set_track_data(data, mt_track_data(data) %>% select(where(not_all_na))) 
-    
-    
+    mutate(behav = case_when(
+
+      # If any ACC values exceed their threshold, reclassify to feeding
+      (behav == "SResting") & (var_acc_x > thresx) ~ "SFeeding",
+      (behav == "SResting") & (var_acc_y > thresy) ~ "SFeeding",
+      (behav == "SResting") & (var_acc_z > thresz) ~ "SFeeding",
+      TRUE ~ behav
+    ),
+      RULE = case_when(
+        # because this is the only feeding classification so far:
+        behav == "SFeeding" ~ "[4] Abnormally high ACC",
+        TRUE ~ RULE)) %>%
+      
+      # Move these attributes to track data:
+      mt_as_track_attribute(c("thresx", "thresy", "thresz"))
   }
   
+  # Log results
+  logger.trace(paste0("   ", sum(data$RULE == "[4] Abnormally high ACC", na.rm = T), " locations re-classified as SFeeding"))
   
-  
-  
-  # Cumulative Time Reassignment ---------------------------------------------------------
-  
-  # We fit the second-stage model for each animal, and then re-stack the data into a move2 object
-  newdat <- list()
-  
-  
-  for (tag in unique(mt_track_id(data))) {
-    
-    # If there is not enough data for this bird, skip its second-stage
-    birddat <- filter_track_data(data, .track_id = tag)
-    if(nrow(birddat) < 10) {
-      logger.info(paste0("Insufficient data exists for ID ", tag, " with associated model. Skipping second-stage classification"))
-      next}
-    
-    logger.info(paste0("Beginning second-stage classification for ID ", tag))
-    logger.trace(paste0("Number of locations available for this ID: ", nrow(birddat)))
-    
-    
-    
-    ## Cumulative Stationary Time Reassignment ===============================================================
-    
-    #' ~~~ Calculate cumulative time spent stationary
-    birddat %<>%
-      mutate(
-        stationary_runLts = data.table::rleid(stationary == 1)     # id runs of stationary & non-stationary entries
-      ) %>%
-      group_by(stationary_runLts) %>%
-      mutate(
-        cumtimestat = cumsum(as.numeric(timediff_hrs)), # compute cumulative time (hrs) spent stationary & non-stationary
-        cumtimestat = ifelse(stationary == 0 | cumtimestat < 0, 0, cumtimestat)
-      ) %>%
-      ungroup() %>%
-      mutate(
-        cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
-        cumtimestat_pctl_BC = 1 - ecdf(cumtimestat)(cumtimestat)                                               # Correct calculation?
-      )
-    
-    # Reasssign SResting => SFeeding
-    # The longest 5 percentiles of runs of stationary behaviours will be reclassified as SFeeding
-    
-    birddat %<>% 
-      mutate(
-        behav = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "SFeeding", behav)
-      ) 
-    
-    
-
 
     
-    ## Speed-Time Model Reassignment ================================================================================
+  #### 5. Roosting Classification -----
+  logger.info("[5] Performing roosting classification")
+  data %<>%
+    group_by(ID, roostgroup) %>%
+    #dplyr::select(-c("travel01", "cum_trav", "revcum_trav", "endofday_dist")) %>%
+    mutate(
+      # Reclassify any stationary runs that involve an overnight roost to SRoosting
+      RULE = ifelse(!is.na(roostgroup) & any(roostsite == 1) & (behav != "STravelling"), "[5] Stationary at roost site", RULE),
+      behav = ifelse(!is.na(roostgroup) & any(roostsite == 1) & (behav != "STravelling"), "SRoosting", behav)
+    ) %>%
+    #dplyr::select(-c("endofday", "roostsite", "mt_track_id(.)", "date(mt_time(.))")) %>%
+    ungroup()
+  
+  # Log results
+  logger.trace(paste0("   ", sum(data$RULE == "[5] Stationary at roost site", na.rm = T), " locations re-classified as SRoosting"))
+                                       # Correct calculation?
 
-        #' This section will be reincorporated at a later date and allow reclassification
-        #' based on a speed-time model fitted to each animal using an alternative MoveApp.
-        #' For now, feeding will only be classified by cumulative stationary time
-        
-    # Force-stop this section until incorporated:
-    fit_speed_time <- FALSE
+  
+  #### 6. Cumulative-Time Reclassification -----
+  logger.info("[6] Performing stationary-time classification")
+
+  # Generate stationary data
+  data %<>%
+    group_by(ID) %>%
+    mutate(
+      stationaryNotRoost = ifelse(stationary == 1 & behav != "SRoosting", 1, 0),
+      stationary_runLts = data.table::rleid(stationaryNotRoost == 1)     # id runs of stationary & non-stationary entries
+    ) %>%
+    group_by(ID, stationary_runLts) %>%
+    mutate(
+      cumtimestat = cumsum(as.numeric(timediff_hrs)), # compute cumulative time (hrs) spent stationary & non-stationary
+      cumtimestat = ifelse(stationaryNotRoost == 0 | cumtimestat < 0, 0, cumtimestat)
+    ) %>%
+    group_by(ID) %>%
+    mutate(
+      cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
+      cumtimestat_pctl_BC = 1 - ecdf(cumtimestat)(cumtimestat) 
+      )       
+
     
-    # Only perform this if the option is selected:
-    if (fit_speed_time == TRUE) {
-      
-      
-      ### Calling model ==========================================================================================
-      
-      # Retrieve model
-      if (tag %in% names(providedModels) & nomodels == FALSE) {
-        # If animal has an associated model, call it:
-        fit <- providedModels[[tag]]
-      } else {
-        # If no model, use the fallback model:
-        logger.warn(paste0("No model has been fitted to ID ", tag, " . Applying fallback model for Gyps Africanus vultures"))
-        fit <- standardModel
-      }
-      
-      
-      ### Perform reclassification ===========================================================================
-      
-      x_values <- sort(unique(birddat$hourmin))
-      b <- cbind(rep(1, length(x_values)), bs(x_values, 
-                                              knots=fit$splineParams[[2]]$knots,
-                                              Boundary.knots = fit$splineParams[[2]]$bd,
-                                              degree=2))
-      realfit <- exp(b%*%coef(fit))
-      rcoefs<- rmvnorm(1000, coef(fit), summary(fit)$cov.unscaled)
-      try(rcoefs<- rmvnorm(1000, coef(fit), summary(fit)$cov.robust), silent = TRUE)
-      reta <- (b%*%t(rcoefs))
-      rpreds <- exp(reta)
-      #rpreds<- exp(reta)/(1+exp(reta))
-      quant.func <- function(x){quantile(x, probs=c(0.025, 0.975), na.rm=T)}
-      cis <- t(apply(rpreds, 1, quant.func))
-      
-      # -- Construct prediction intervals
-      predint <- apply(rpreds, 2, function(x){rpois(length(x), x)})
-      pis <- t(apply(predint, 1, quant.func))
-      
-      # -- Calculate empirical p-values
-      empPval <- c()
-      
-      for(i in 1:nrow(birddat)){  # i = 271
-        
-        # BC: Reckon there is a bug in the following line of code, as it can produce a vector of length > 1 in the
-        #     right-hand side of the condition in some occasions (duplicated hour-day entries, with different speeds),
-        #     leading to pairwise comparisons with the vector on the left-hand side. Don't think this was the 
-        #     intention in the first place. The amended code simply compares the predicted draws against one speed value at time
-        #     
-        empPval[i]<- length(which(predint[ which(x_values==birddat$hourmin[i]), ] < birddat$kmph[birddat$hourmin==birddat$hourmin[i] & birddat$yearmonthday==birddat$yearmonthday[i]]))/1000
-      }
-      
-      
-      birddat %<>% 
-        mutate(
-          empPval = empPval,
-          behav = ifelse(empPval < 0.05 & behav == "SResting", "SFeeding", behav),
-        ) 
-      
-    }
-    
-    # The following is definitely not the best way to re-join the objects
-    # But we're going with it for now
-    newdat[[tag]] <- birddat
-    logger.info(paste0("Second-stage classification complete for ID ", tag))
-    
-  }
+  # Reasssign SResting => SFeeding
+  # The longest 5 percentiles of runs of stationary behaviours will be reclassified as SFeeding
+  data %<>% 
+    mutate(
+      RULE = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "[6] Extended stationary behaviour", RULE),
+      behav = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "SFeeding", behav),
+    ) %>%
+    ungroup()
+  
+  # Log results
+  logger.trace(paste0("   ", sum(data$RULE == "[6] Extended stationary behaviour", na.rm = T), " locations re-classified as SFeeding"))
   
   
-  # Return data to move2 object -----------------------------------------------------------------------------------------------
+  #### 7. Speed-Time Reclassification -----
+  #logger.info("[7] Performing speed-time classification")
+  #' This is where the reclassification step will go, once
+  #' models are reworked
   
-  # Rejoin move2 objects into classified data:
-  logger.info("All second-stage classifications complete. Re-stacking to move2 object")
-  updateddata <- move2::mt_stack(newdat) 
   
   
   
   # Create plots, if selected ------------------------------------------------------
   
+  logger.info("Classification complete. Generating output plots")
   if(create_plots == TRUE) {
     
     # create simple plot
@@ -609,13 +669,31 @@ rFunction = function(data, rooststart, roostend, travelcut,
     
   }
   
-  
+
   # Generate summary table
-  behavsummary <- table(mt_track_id(updateddata), updateddata$behav)
+  behavsummary <- table(mt_track_id(data), data$behav)
   write.csv(behavsummary, file = appArtifactPath("behavsummary.csv"))
   
+  # Remove nonessential behavioural columns
+  if (keepAllCols == FALSE) {
+    logger.trace("Removing all nonessential columns")
+    data %<>% dplyr::select(-any_of(
+      c(
+        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "temptime", "endofday", "endofday_dist", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC"
+      ) 
+    ))
+    
+  } else {
+    # Just get rid of the unuseful columns
+    logger.trace("Removing select nonessential columns")
+    data %<>% dplyr::select(-any_of(
+      c(
+        "ID", "temptime", "endofday_dist", "roostsite", "travel01", "cum_trav", "revcum_trav", "stationaryNotRoost", "cumtimestat"
+      ) 
+    ))
+  }
   
   # Return final result
-  return(updateddata)
+  return(data)
   
 }

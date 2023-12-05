@@ -12,3 +12,8 @@ appspec.json_DEPRECATED.json
 tests/testthat/.behavsummary.csv
 tests/testthat/.birdtrack_Prinzesschen.png
 data/raw/sunrise.rds
+data/raw/GAIA_essentials.rds
+data/raw/GAIA_test.rds
+data/raw/Tanz_full.rds
+data/raw/keep_fake_essentials.R
+plot_ACC.R
