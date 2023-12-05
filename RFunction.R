@@ -335,6 +335,7 @@ rFunction = function(data, travelcut,
     
   } else {
     logger.info("[4] No accelerometer data detected: skipping ACC preparation")
+    ACCclassify <- FALSE
   }
   
   
