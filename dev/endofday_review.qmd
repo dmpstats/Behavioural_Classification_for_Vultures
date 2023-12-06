@@ -1,0 +1,88 @@
+---
+format: gfm
+editor: source
+---
+
+
+```{r}
+#| message: false
+
+library(move2)
+library(dplyr)
+library(sf)
+
+
+tm <- seq(as.POSIXct("2022-01-01 00:01:00"), as.POSIXct("2022-01-03 06:02:00"), by = "4 hours")
+dt <- tibble(
+  x = cumsum(rnorm(length(tm), sd = 0.01)), 
+  y = cumsum(rnorm(length(tm), sd = 0.01)),
+  timestamp = tm, 
+  track = "a"
+)
+
+data <- mt_as_move2(
+  dt, 
+  coords = c("x", "y"), 
+  time_column = "timestamp",
+  track_id_column = "track"
+) |> 
+  sf::st_set_crs(4326L)
+
+mt_is_move2(data)
+as_tibble(data)
+```
+
+
+
+```{r}
+data <- data %>% 
+  mutate(
+    timediff_hrs = mt_time_lags(data, units = "hr") |> as.vector(), 
+    # Mark final point at night and first point in morning
+    endofday = case_when(
+      lubridate::date(lead(mt_time(.))) != lubridate::date(mt_time(.)) ~ "FINAL", # final point in day
+      lubridate::date(lag(mt_time(.))) != lubridate::date(mt_time(.)) ~ "FIRST" # first point in day 
+    ),
+    endofday = case_when(
+      # Adjust for middle-of-night points
+      endofday == "FIRST" & timediff_hrs > 2 & lag(timediff_hrs) > 2 ~ "MIDDLE",
+      TRUE ~ endofday
+    ),
+    endofday = case_when(
+      lag(endofday) == "MIDDLE" ~ "FIRST",
+      TRUE ~ endofday
+    ),
+    endofday_index = case_when(
+      endofday == "FINAL" ~ row_number(),
+      TRUE ~ NA
+    ),
+    endofday_dist = NA 
+  )
+
+as_tibble(data)
+```
+
+```{r}
+ # Add an efficient 'overnight distance' column 
+ data %<>%  
+   mutate(endofday_dist = mt_distance(.)) %>% 
+   mutate(endofday_dist_2 = case_when( 
+     endofday == "FINAL" ~ endofday_dist, 
+     TRUE ~ NA 
+   ), 
+   endofday_dist = endofday_dist %>% units::set_units("metres") 
+   ) 
+
+as_tibble(data)
+```
+
+
+```{r}
+ data %<>% mutate( 
+   roostsite = ifelse( 
+     !is.na(endofday_dist) & endofday_dist < units::set_units(25, "metres"), 
+     1, 0 
+   ) 
+ ) %>% select(-endofday_index) 
+```
+

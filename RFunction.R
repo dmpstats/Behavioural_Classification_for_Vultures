@@ -262,8 +262,8 @@ rFunction = function(data,
      #' Anything below is initially SResting
 
   data %<>%
-    mutate(
-      behav = case_when(
+    dplyr::mutate(
+      behav = dplyr::case_when(
         kmph < travelcut  ~ "SResting",
         kmph > travelcut  ~ "STravelling",
         TRUE ~ "Unknown"
@@ -317,7 +317,6 @@ rFunction = function(data,
   
       #' If a bird is SResting and it is night time, the bird is SRoosting
       #' Otherwise, remains unchanged
-  
   
   if (use_sunrise == TRUE) {
     data <- data |> 
