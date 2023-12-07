@@ -165,6 +165,58 @@ rFunction = function(data, travelcut,
     return(data)}
 
   
+  if(travelcut <= 0 | !is.numeric(travelcut)) {
+    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
+    stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
+  }
+  
+  
+  # only validate `altbound` if column named "altitude" is in input
+  if("altitude" %in% colnames(data)){
+    
+    if(!is.numeric(altbound)) {
+      logger.warn("    altbound is non-numeric. Stopping computation - please check inputs")
+      stop("Altitude change threshold (`altbound`) is non-numeric. Please check input settings")
+      
+    } else if(altbound == 0){
+      
+      logger.warn(
+        paste0("Beware that altitude threshold (`altbound`) is set to 0m, which ",
+               "means that ANY change is altitude will be considered as ascencing/descending ",
+               "movement.")
+      )
+    }  
+  }
+
+  
+  if(is.null(sunrise_leeway)) {
+    logger.warn("    No sunrise leeway provided as input. Defaulting to no leeway")
+    sunrise_leeway <- 0
+  }
+  if(is.null(sunset_leeway)) {
+    logger.warn("    No sunset leeway provided as input. Defaulting to no leeway")
+    sunset_leeway <- 0
+  }
+  
+  if ("sunrise_timestamp" %!in% colnames(data) | "sunset_timestamp" %!in% colnames(data)) {
+    logger.warn("    'sunrise_timestamp' or 'sunset timestamp' is not a column in the input data. Sunrise-sunset classification cannot be performed. Terminating - please use the 'Add Local and Solar Time' MoveApp in this workflow BEFORE this MoveApp")
+    stop(paste0(
+      "'sunrise_timestamp' or 'sunset timestamp' is not a column in the input data. ",
+      "Sunrise-sunset classification cannot be performed. Please use the 'Add Local ",
+      "and Solar Time' MoveApp in this workflow to add these columns BEFORE this MoveApp."
+    )
+    )
+  } else {
+    logger.trace("    Sunrise and sunset columns identified. Able to perform sunrise-sunset classification")
+  }
+  
+  
+  if ("timestamp_local" %!in% colnames(data)) {
+    logger.warn("   timestamp_local is not a column within the data. Overnight roosting classification may be flawed. Please use 'Add Local and Solar Time' MoveApp to generate this column.")
+  }
+  
+  
+  
   logger.trace("Input is in correct format. Proceeding with classification for all IDs")
   
   # Input data pre-prep -----------------------------------------------------------------------------------------------
@@ -228,11 +280,6 @@ rFunction = function(data, travelcut,
      #' - events where speed > travelcut == non-stationary (0),
      #' - events with NA speed == stationary (1)
   
-  if(travelcut <= 0 | !is.numeric(travelcut)) {
-    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
-    stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
-  }
-  
   data %<>%
     mutate(
       stationary = case_when(
@@ -255,18 +302,7 @@ rFunction = function(data, travelcut,
 
   if ("altitude" %in% colnames(data)) {
     
-    logger.trace("   Altitude column identified. Beginning altitude classification")
-    
-    if(!is.numeric(altbound)) {
-      logger.warn("    altbound is non-numeric. Stopping computation - please check inputs")
-      stop("Altitude change threshold (`altbound`) is non-numeric. Please check input settings")
-    } else if(altbound == 0){
-      logger.warn(
-        paste0("Beware that altitude threshold (`altbound`) is set to 0m, which ",
-               "means that ANY change is altitude will be considered as ascencing/descending ",
-               "movement.")
-      )
-    }
+    logger.trace("   Altitude column identified. Altitude to be used in classification")
     
     data %<>% 
       # Reset altitude change each day:
@@ -296,26 +332,6 @@ rFunction = function(data, travelcut,
   logger.info("[3] Preparing day-night classification")
   
   # Check all columns present & inputs valid
-  
-  if ("timestamp_local" %!in% colnames(data)) {
-    logger.warn("   timestamp_local is not a column within the data. Overnight roosting classification may be flawed. Please use 'Add Local and Solar Time' MoveApp to generate this column.")
-  }
-  if(is.null(sunrise_leeway)) {
-    logger.warn("    No sunrise leeway provided as input. Defaulting to no leeway")
-    sunrise_leeway <- 0
-  }
-  if(is.null(sunset_leeway)) {
-    logger.warn("    No sunset leeway provided as input. Defaulting to no leeway")
-    sunset_leeway <- 0
-  }
-  
-  if ("sunrise_timestamp" %!in% colnames(data) | "sunset_timestamp" %!in% colnames(data)) {
-    logger.warn("    'sunrise_timestamp' or 'sunset timestamp' is not a column in the input data. Sunrise-sunset classification cannot be performed. Terminating - please use the 'Add Local and Solar Time' MoveApp in this workflow BEFORE this MoveApp")
-    stop()
-  } else {
-    logger.trace("    Sunrise and sunset columns identified. Able to perform sunrise-sunset classification")
-  }
-  
   
   ### Add necessary columns
   # Add 'nightpoint' column determining what is day/night:
