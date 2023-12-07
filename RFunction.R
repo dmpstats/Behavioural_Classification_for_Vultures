@@ -231,8 +231,7 @@ rFunction = function(data, travelcut,
       stationary = case_when(
         kmph <= travelcut ~ 1,
         kmph > travelcut ~ 0,
-        is.na(kmph) | is.nan(kmph) ~ 1, # assume stationary if no data 
-        TRUE ~ NA
+        is.na(kmph) | is.nan(kmph) ~ 1 # assume stationary if no data 
       )
     )
   
