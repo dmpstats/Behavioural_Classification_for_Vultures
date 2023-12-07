@@ -216,7 +216,7 @@ rFunction = function(data, travelcut,
   
   logger.info("[1] Preparing speed-classification data")
   
-     #' Stationary Classification 
+     #' Identify stationary events
      #' - events with speed <= travelcut == stationary (1),
      #' - events where speed > travelcut == non-stationary (0),
      #' - events with NA speed == stationary (1)
@@ -239,11 +239,11 @@ rFunction = function(data, travelcut,
   
   ## 2. Altitude Reclassification Prep -------------------------------------------------
 
-      #' If a bird is ascending, it is STravelling
-      #' If a bird is flatlining, it remains SResting
-      #' If a bird is descending, 
-      #'      Next location is ascending/descending ==> STravelling
-      #'      Next location is flatlining ==> remains SResting
+    #' Categorize vertical movement based on altitude change
+    #' change of altitude to next event > threshold: altchange == "ascent"
+    #' change of altitude to next event < -threshold: altchange == "descent"
+    #' else (including NAs): altchange == "flatline"
+      
   
   logger.info("[2] Preparing altitude-classification data")
 
@@ -497,6 +497,10 @@ rFunction = function(data, travelcut,
   
   logger.info("All data prepared. Performing all classification steps")
   
+  #' Speed Classification
+  #' Anything above travelcut is stationary
+  #' Anything below is initially SResting
+  
   
   #### 1. Speed Classification ----
   logger.info("[1] Performing speed classification")
@@ -520,6 +524,13 @@ rFunction = function(data, travelcut,
   
   #### 2. Altitude Classification ----
   logger.info("[2] Performing altitude classification")
+  
+  #' If a bird is ascending, it is STravelling
+  #' If a bird is flatlining, it remains SResting
+  #' If a bird is descending, 
+  #'      Next location is ascending/descending ==> STravelling
+  #'      Next location is flatlining ==> remains SResting
+  
   data %<>%
     mutate(
       RULE = case_when(
