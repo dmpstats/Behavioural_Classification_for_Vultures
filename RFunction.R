@@ -216,9 +216,10 @@ rFunction = function(data, travelcut,
   
   logger.info("[1] Preparing speed-classification data")
   
-     #' Speed Classification
-     #' Anything above travelcut is STravelling
-     #' Anything below is initially SResting
+     #' Stationary Classification 
+     #' - events with speed <= travelcut == stationary (1),
+     #' - events where speed > travelcut == non-stationary (0),
+     #' - events with NA speed == stationary (1)
   
   if(travelcut <= 0 | !is.numeric(travelcut)) {
     logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
