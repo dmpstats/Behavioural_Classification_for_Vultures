@@ -190,6 +190,13 @@ rFunction = function(data, travelcut,
     timestamp = mt_time(.)
   )
   
+  
+  # Temporary if-else to guard against timestamp_local column not yet being
+  # included in the list of essential columns defined in the pre-processing app.
+  # Thus, if input data has been through the pre-processing app with the
+  # essential cols feature turned-on, timestamp_local will be missing here. Once
+  # a new version of the pre-proc app with timestamp_local included in the list
+  # of essential columns i sreleased, the next statement must be updated
   if ("timestamp_local" %in% colnames(data)) {
     data %<>% mutate(yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""))
   } else {
