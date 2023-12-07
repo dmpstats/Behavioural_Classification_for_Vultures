@@ -246,11 +246,10 @@ rFunction = function(data, travelcut,
   
   ## 2. Altitude Reclassification Prep -------------------------------------------------
 
-    #' Categorize vertical movement based on altitude change
-    #' change of altitude to next event > threshold: altchange == "ascent"
-    #' change of altitude to next event < -threshold: altchange == "descent"
-    #' else (including NAs): altchange == "flatline"
-      
+  #' Categorize vertical movement based on altitude change
+  #'    i. change of altitude to next event > threshold: altchange == "ascent"
+  #'    ii. change of altitude to next event < -threshold: altchange == "descent"
+  #'    iii. else (including NAs): altchange == "flatline"
   
   logger.info("[2] Preparing altitude-classification data")
 
