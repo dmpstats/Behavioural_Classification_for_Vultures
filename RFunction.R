@@ -261,23 +261,21 @@ rFunction = function(data, travelcut,
                "movement.")
       )
     }
-
-    # Classify altitude changes
+    
     data %<>% 
       # Reset altitude change each day:
       group_by(ID, yearmonthday) %>%
       dplyr::mutate(
-      
-      altitude = as.numeric(unlist(altitude)), # fix when input is character vector
-
-      altdiff = ifelse(!is.na(altitude) & !is.na(dplyr::lead(altitude)), dplyr::lead(altitude) - altitude, NA),
-      
-      altchange = case_when(
-                       altdiff < -altbound ~ "descent",
-                       altdiff > altbound ~ "ascent",
-                       is.na(altdiff) ~ "flatline",
-                       TRUE ~ "flatline"
-                     )) %>% 
+        
+        altitude = as.numeric(altitude), # fix when input is character vector
+        
+        altdiff = dplyr::lead(altitude) - altitude,
+        
+        altchange = case_when(
+          altdiff < -altbound ~ "descent",
+          altdiff > altbound ~ "ascent",
+          .default = "flatline"
+        )) %>% 
       ungroup()
     
   } else {
