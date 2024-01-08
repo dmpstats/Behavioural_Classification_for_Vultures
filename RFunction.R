@@ -312,7 +312,7 @@ rFunction = function(data, travelcut,
   # This gives us one overnight-distance measure at the end of each bird's day
   data %<>% mutate(
     roostsite = ifelse(
-      !is.na(endofday_dist) & endofday_dist < 25,
+      !is.na(endofday_dist) & endofday_dist < 15,
       1, 0
     )
   ) 
@@ -340,35 +340,84 @@ rFunction = function(data, travelcut,
   # This will be generated in the reclassification step
   # as it needs to filter out any roostgroup locations
   
-  # data %<>%
-  #   group_by(ID) %>%
-  #   mutate(
-  #     stationaryNotRoost = ifelse(stationary == 1 & behav != "SRoosting", 1, 0),
-  #     stationary_runLts = data.table::rleid(stationaryNotRoost == 1)     # id runs of stationary & non-stationary entries
-  #   ) %>%
-  #   group_by(ID, stationary_runLts) %>%
-  #   mutate(
-  #     cumtimestat = cumsum(as.numeric(timediff_hrs)), # compute cumulative time (hrs) spent stationary & non-stationary
-  #     cumtimestat = ifelse(stationaryNotRoost == 0 | cumtimestat < 0, 0, cumtimestat)
-  #   ) %>%
-  #   group_by(ID) %>%
-  #   mutate(
-  #     cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
-  #     cumtimestat_pctl_BC = 1 - ecdf(cumtimestat)(cumtimestat)                                               # Correct calculation?
-  #   )
-  
-  
+ 
   ## 7. Speed-Time Reclassification --------------------------------------------
   
   #logger.trace("[7] Preparing speed-time model data")
   # This is where the second-stage models will go, once reworked
   #'
   #'
-  #'
-  #'
-  #'
-  #'
   
+  # *** move this section to the standardising app???** ##
+  # Probably more efficient ways to do this #
+  
+  store <- NULL
+  for (bird in unique(data$ID)){
+    newdat <- data %>%
+      filter(ID == bird) %>%
+      mutate(month = month(timestamp),
+             response = kmph) %>%
+      filter(!is.na(response), 
+             response < travelcut,
+             timestamp > (max(timestamp) - days(30))) 
+    
+    # ** add if statement or similar to ensure that if not enough data, 
+    # this modelling is not done (e.g. need 10 days??) ** #
+    # ALSO what happens if more than 30 days data provided??
+    
+    # predict to full dataset (we'll ignore the travelling points in the classification later)
+    preddat <- filter(data, ID == bird)
+    
+    initialModel <- glm(response + 0.00001 ~ 1 , family = Gamma(link="log"), data = newdat)
+    
+    salsa1dlist <- list(fitnessMeasure = 'BIC', 
+                        minKnots_1d = c(1), 
+                        maxKnots_1d = c(5), 
+                        startKnots_1d = c(1), 
+                        degree = c(2), 
+                        maxIterations = 10,
+                        gaps = c(0))
+    
+    # run SALSA
+    fit<-runSALSA1D(initialModel, 
+                    salsa1dlist, 
+                    varlist=c("hourmin"), 
+                    splineParams=NULL, 
+                    datain=newdat, 
+                    predictionData = preddat,
+                    panelid = newdat$yearmonthday, 
+                    suppress.printout = TRUE)$bestModel
+    
+
+    
+    preddat$kmphpreds <- predict(object = fit, newdata = preddat)
+    
+    boots <- do.bootstrap.cress.robust(model.obj = fit, 
+                                       predictionGrid = preddat, 
+                                       B = 1000, robust = TRUE, 
+                                       cat.message = FALSE)
+    cis <- makeBootCIs(boots)
+    
+    # -- Construct prediction intervals
+    d = summary(fit)$dispersion
+    predint <- apply(boots, 2, function(x){rgamma(n = length(x), shape = 1/d, scale= x*d)})
+    pis <- t(apply(predint, 1, FUN = quantile,probs = c(0.025, 0.975)))
+    
+    preddat <- preddat %>% 
+      mutate("kmphCI2.5" = cis[,1],
+             "kmphCI97.5" = cis[,2],
+             "kmphPI2.5" = pis[,1], 
+             "kmphPI97.5" = pis[,2]) 
+    
+    # ultimately probably only need to keep last column (kmphPI97.5)
+    
+    store <- rbind(store, preddat)
+    # store the model objects too??
+  }
+  
+  # join stored thresholds back to main data
+  data <- store
+  rm(store)
   
   
   # PERFORM CLASSIFICATION STEPS 1-7 -------------------------------------------------------
@@ -380,15 +429,8 @@ rFunction = function(data, travelcut,
   logger.info("[1] Performing speed classification")
   data %<>% mutate(
     # Add column to explain classification:
-    RULE = case_when(
-      kmph < travelcut ~ "[1] Low speed",
-      kmph > travelcut ~ "[1] High speed"
-    ), 
-    behav = case_when(
-      kmph < travelcut  ~ "SResting",
-      kmph > travelcut  ~ "STravelling",
-      TRUE ~ "Unknown"
-    )
+    RULE = ifelse(stationary == 1, "[1] Low speed","[1] High speed"), 
+    behav = ifelse(stationary == 1, "SResting", "STravelling")
   )
   
   # Log results
@@ -430,11 +472,7 @@ rFunction = function(data, travelcut,
     )
   logger.trace(paste0("   ", sum(data$RULE == "[3] Stationary at night", na.rm = T), " locations re-classified as SRoosting"))
   
-  
-  
-  
-  #### 4. Accelerometer Classification -----
-  logger.info("[4] Performing accelerometer classification")
+  # use night time roosting to estimate ACC thresholds if ACC available
   if (ACCclassify == TRUE) {
     roostpoints <- data %>%
       filter(behav == "SRoosting") %>%
@@ -445,51 +483,32 @@ rFunction = function(data, travelcut,
         thresy = quantile(var_acc_y, probs = 0.95, na.rm = T) %>% as.vector(),
         thresz = quantile(var_acc_z, probs = 0.95, na.rm = T) %>% as.vector()
       )
-    
-    data %<>% 
-      left_join(roostpoints, by = "ID") %>%
-      mutate(behav = case_when(
-        
-        # If any ACC values exceed their threshold, reclassify to feeding
-        (behav == "SResting") & (var_acc_x > thresx) ~ "SFeeding",
-        (behav == "SResting") & (var_acc_y > thresy) ~ "SFeeding",
-        (behav == "SResting") & (var_acc_z > thresz) ~ "SFeeding",
-        TRUE ~ behav
-      ),
-      RULE = case_when(
-        # because this is the only feeding classification so far:
-        behav == "SFeeding" ~ "[4] Abnormally high ACC",
-        TRUE ~ RULE)) %>%
-      
-      # Move these attributes to track data:
-      mt_as_track_attribute(c("thresx", "thresy", "thresz"))
   }
   
-  # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[4] Abnormally high ACC", na.rm = T), " locations re-classified as SFeeding"))
   
-  
-  
-  #### 5. Roosting Classification -----
-  logger.info("[5] Performing roosting classification")
+
+  #### 4. Roosting Classification -----
+  logger.info("[4] Performing roosting classification")
   data %<>%
     group_by(ID, roostgroup) %>%
-    #dplyr::select(-c("travel01", "cum_trav", "revcum_trav", "endofday_dist")) %>%
     mutate(
       # Reclassify any stationary runs that involve an overnight roost to SRoosting
-      RULE = ifelse(!is.na(roostgroup) & any(roostsite == 1) & (behav != "STravelling"), "[5] Stationary at roost site", RULE),
+      RULE = ifelse(!is.na(roostgroup) & any(roostsite == 1) & (behav != "STravelling"), "[4] Stationary at roost site", RULE),
       behav = ifelse(!is.na(roostgroup) & any(roostsite == 1) & (behav != "STravelling"), "SRoosting", behav)
     ) %>%
-    #dplyr::select(-c("endofday", "roostsite", "mt_track_id(.)", "date(mt_time(.))")) %>%
     ungroup()
   
   # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[5] Stationary at roost site", na.rm = T), " locations re-classified as SRoosting"))
-  # Correct calculation?
+  logger.trace(paste0("   ", sum(data$RULE == "[4] Stationary at roost site", na.rm = T), " locations re-classified as SRoosting"))
+
+  logger.trace(paste0("   ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
+  logger.trace(paste0("   ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
+  logger.trace(paste0("   ", sum(data$behav == "SRoosting", na.rm = T), " locations classified as SRoosting"))
   
+
   
-  #### 6. Cumulative-Time Reclassification -----
-  logger.info("[6] Performing stationary-time classification")
+  #### 5. Cumulative-Time Reclassification -----
+  logger.info("[5] Performing stationary-time classification")
   
   # Generate stationary data
   data %<>%
@@ -505,29 +524,81 @@ rFunction = function(data, travelcut,
     ) %>%
     group_by(ID) %>%
     mutate(
-      cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
-      cumtimestat_pctl_BC = 1 - ecdf(cumtimestat)(cumtimestat) 
+      # cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
+      cumtimestat_pctl = 1 - ecdf(cumtimestat)(cumtimestat) 
     )       
+  
+  # find the length (in time) of every stationary run
+  eventtimes <- data %>% data.frame() %>%
+    group_by(ID, stationary_runLts) %>%
+    summarise(runtime = suppressWarnings(max(cumtimestat, na.rm = TRUE)),
+              runtime = ifelse(is.infinite(runtime), 0, runtime)) %>%
+    mutate(dayRunThresh = quantile(runtime, probs = 0.95))
+  
+# add run time back to main data
+  data %<>% 
+    left_join(., eventtimes, by = c("ID", "stationary_runLts"))
   
   
   # Reasssign SResting => SFeeding
   # The longest 5 percentiles of runs of stationary behaviours will be reclassified as SFeeding
   data %<>% 
     mutate(
-      RULE = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "[6] Extended stationary behaviour", RULE),
-      behav = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "SFeeding", behav),
+      RULE = ifelse(cumtimestat > dayRunThresh & behav == "SResting", "[5] Extended stationary behaviour", RULE),
+      behav = ifelse(cumtimestat > dayRunThresh & behav == "SResting", "SFeeding", behav),
+      #RULE = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "[5] Extended stationary behaviour", RULE),
+      #behav = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "SFeeding", behav),
     ) %>%
     ungroup()
   
   # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[6] Extended stationary behaviour", na.rm = T), " locations re-classified as SFeeding"))
+  logger.trace(paste0("   ", sum(data$RULE == "[5] Extended stationary behaviour", na.rm = T), " locations re-classified as SFeeding"))
   
   
-  #### 7. Speed-Time Reclassification -----
-  #logger.info("[7] Performing speed-time classification")
-  #' This is where the reclassification step will go, once
-  #' models are reworked
+  #### 6. Speed-Time Reclassification -----
+  logger.info("[6] Performing speed-time classification")
+
+  data %<>% 
+    mutate(
+      RULE = ifelse(kmph > kmphPI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
+      behav = ifelse(kmph > kmphPI97.5 & behav == "SResting", "SFeeding", behav),
+      #RULE = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "[5] Extended stationary behaviour", RULE),
+      #behav = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "SFeeding", behav),
+    ) %>%
+    ungroup()
   
+  # Log results
+  logger.trace(paste0("   ", sum(data$RULE == "[6] Exceed Speed-Time threshold", na.rm = T), " locations re-classified as SFeeding"))
+  
+  #### 7. Accelerometer Classification -----
+  
+  logger.info("[7] Performing accelerometer classification")
+  if (ACCclassify == TRUE) {
+    data %<>% 
+      left_join(roostpoints, by = "ID") %>%
+      mutate(
+        RULE = case_when(
+          # For ACC values that exceed their threshold, reclassify to feeding
+          (behav == "SResting") & (var_acc_x > thresx) ~ "[7] ACC not similar to roosting",
+          (behav == "SResting") & (var_acc_y > thresy) ~ "[7] ACC not similar to roosting",
+          (behav == "SResting") & (var_acc_z > thresz) ~ "[7] ACC not similar to roosting",
+          #behav == "SFeeding" ~ "[7] ACC not similar to roosting",
+          TRUE ~ RULE),
+        behav = case_when(
+        
+          # For ACC values that exceed their threshold, reclassify to feeding
+          (behav == "SResting") & (var_acc_x > thresx) ~ "SFeeding",
+          (behav == "SResting") & (var_acc_y > thresy) ~ "SFeeding",
+          (behav == "SResting") & (var_acc_z > thresz) ~ "SFeeding",
+          TRUE ~ behav
+        ))%>%
+      
+      # Move these attributes to track data:
+      mt_as_track_attribute(c("thresx", "thresy", "thresz"))
+  }
+  
+  # Log results
+  logger.trace(paste0("   ", sum(data$RULE == "[7] ACC not similar to roosting", na.rm = T), " locations re-classified as SFeeding"))
   
   
   
@@ -578,7 +649,8 @@ rFunction = function(data, travelcut,
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "temptime", "endofday", "endofday_dist", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC"
+        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "temptime", "endofday", "endofday_dist", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC",
+        "kmphCI2.5", "kmphPI2.5", "kmphpreds"
       ) 
     ))
     
@@ -587,7 +659,7 @@ rFunction = function(data, travelcut,
     logger.trace("Removing select nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "ID", "temptime", "endofday_dist", "roostsite", "travel01", "cum_trav", "revcum_trav", "stationaryNotRoost", "cumtimestat"
+        "ID", "temptime", "endofday_dist", "roostsite", "travel01", "cum_trav", "revcum_trav", "stationaryNotRoost", "cumtimestat", "kmphCI2.5", "kmphPI2.5", "kmphpreds"
       ) 
     ))
   }
@@ -632,17 +704,24 @@ prep_ACC <- function(data, interpolate = FALSE) {
   
   # Add empties to non-ACC rows 
   missrows %<>% mutate(
-    var_acc_x = NULL,
-    var_acc_y = NULL,
-    var_acc_z = NULL
+    var_acc_x = numeric(),
+    var_acc_y = numeric(),
+    var_acc_z = numeric()
   )
   
-  alldat <- mt_stack(mt_as_move2(loc_acc_var, 
-                                 track_id_column = mt_track_id_column(missrows),
-                                 time_column = mt_time_column(missrows)
-  ), missrows,
-  .track_combine = "merge") %>%
-    arrange(mt_track_id(.), mt_time(.))
+  if(nrow(missrows) == 0){
+    alldat <- mt_as_move2(loc_acc_var, 
+                          track_id_column = mt_track_id_column(missrows),
+                          time_column = mt_time_column(missrows)) %>%
+      arrange(mt_track_id(.), mt_time(.))
+  }else{
+    alldat <- mt_stack(mt_as_move2(loc_acc_var, 
+                                   track_id_column = mt_track_id_column(missrows),
+                                   time_column = mt_time_column(missrows)
+    ), missrows,
+    .track_combine = "merge") %>%
+      arrange(mt_track_id(.), mt_time(.))
+  }
   
   # Restore track data (lost in above steps)
   alldat <- mt_set_track_data(alldat, tracklevel)
