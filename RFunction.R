@@ -354,13 +354,14 @@ rFunction = function(data, travelcut,
   
   store <- NULL
   for (bird in unique(data$ID)){
+    #print(bird)
     newdat <- data %>%
       filter(ID == bird) %>%
       mutate(month = month(timestamp),
-             response = kmph) %>%
+             response = kmph + 0.00001) %>%
       filter(!is.na(response), 
              response < travelcut,
-             timestamp > (max(timestamp) - days(30))) 
+             timestamp > (max(timestamp) - days(90))) 
     
     # ** add if statement or similar to ensure that if not enough data, 
     # this modelling is not done (e.g. need 10 days??) ** #
@@ -369,7 +370,7 @@ rFunction = function(data, travelcut,
     # predict to full dataset (we'll ignore the travelling points in the classification later)
     preddat <- filter(data, ID == bird)
     
-    initialModel <- glm(response + 0.00001 ~ 1 , family = Gamma(link="log"), data = newdat)
+    initialModel <- glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
     
     salsa1dlist <- list(fitnessMeasure = 'BIC', 
                         minKnots_1d = c(1), 
@@ -385,7 +386,7 @@ rFunction = function(data, travelcut,
                     varlist=c("hourmin"), 
                     splineParams=NULL, 
                     datain=newdat, 
-                    predictionData = preddat,
+                    predictionData = filter(preddat, !is.na(kmph)),
                     panelid = newdat$yearmonthday, 
                     suppress.printout = TRUE)$bestModel
     
