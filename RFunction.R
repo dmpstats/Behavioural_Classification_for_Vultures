@@ -361,7 +361,7 @@ rFunction = function(data, travelcut,
              response = kmph + 0.00001) %>%
       filter(!is.na(response), 
              response < travelcut,
-             timestamp > (max(timestamp) - days(90))) 
+             timestamp > (max(timestamp) - days(30))) 
     
     # ** add if statement or similar to ensure that if not enough data, 
     # this modelling is not done (e.g. need 10 days??) ** #
