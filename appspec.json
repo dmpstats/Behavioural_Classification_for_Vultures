@@ -71,6 +71,21 @@
       },
       {
         "name": "stringr"
+      },
+      {
+        "name": "tidyr"
+      },
+      {
+        "name": "spatstat.utils"
+      },
+      {
+        "name": "purrr"
+      },
+      {
+        "name": "zoo"
+      },
+      {
+        "name": "MRSea"
       }
     ]
   },

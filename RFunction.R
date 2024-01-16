@@ -9,6 +9,9 @@ library('units')
 library('stringr')
 library('tidyr') 
 library('MRSea')
+library("purrr")
+library("zoo")
+library("spatstat.utils")
 
 `%!in%` <- Negate(`%in%`)
 
