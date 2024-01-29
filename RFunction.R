@@ -27,31 +27,6 @@ rFunction = function(data, travelcut,
                      # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
 ) {
   
-  
-  # Prepare Second-Stage Models --------------------------------------------------------------------------------------------
-  
-  #' This section will be re-incorporated at a later date when the MoveApp required to
-  #' generate the speed-time models is published. For now, this stage of classification
-  #' will be skipped
-  
-  # Call model file, if provided:
-  # modelPath <- paste0(getAppFilePath("second_stage_model", fallbackToProvidedFiles = TRUE), "modelfit.rds")
-  # providedModels <- readRDS(modelPath)
-  # 
-  # if(is.character(providedModels)) {
-  #   nomodels <- TRUE
-  #   logger.warn(providedModels)
-  # } else {
-  #   nomodels <- FALSE
-  #   logger.info(paste0("Models provided for tags ", toString(names(providedModels)), ". Proceeding with classification"))
-  # }
-  # 
-  # # Call standard classification model file, for all IDs not included in the above file:
-  # standardModelPath <- paste0(getAppFilePath("standard_model", fallbackToProvidedFiles = TRUE), "standard_model.rds")
-  # standardModel <- readRDS(standardModelPath)
-  # 
-  
-  
   # Check Input Data ----------------------------------------------------------------------------------------------
   
   logger.trace(paste0(
