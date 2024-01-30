@@ -57,11 +57,22 @@ rFunction = function(data, travelcut,
   
   if ("timestamp_local" %in% colnames(data)) {
     data %<>% mutate(yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""))
+    data %<>% 
+      mutate(
+        yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""),
+        hourmin = lubridate::hour(timestamp_local) + 
+          lubridate::minute(timestamp_local)/60 + 
+          lubridate::second(timestamp_local)/3600
+      ) 
   } else {
-    data %<>% mutate(yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp, 1, 10), "-", ""))                     
+    data %<>% 
+      mutate(
+        yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp, 1, 10), "-", ""),
+        hourmin = lubridate::hour(timestamp) + 
+          lubridate::minute(timestamp)/60 + 
+          lubridate::second(timestamp)/3600
+      )                     
   }
-  
-  # Generate necessary data:
   data$dist_m <- as.vector(move2::mt_distance(data))
   data$kmph <- move2::mt_speed(data) %>% units::set_units("km/h") %>% as.vector()
   #data$timediff_hrs <- lubridate::mt_time_lags(data)
