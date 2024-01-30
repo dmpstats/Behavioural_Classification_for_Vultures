@@ -50,7 +50,9 @@ rFunction = function(data, travelcut,
   
   # Data Preparation --------------------------------------------------------------------------------------
   
-  ##  Generate necessary overarching data
+  ## Generate overarching variables  ------
+  logger.info("Data Preparation - generate overarching variables")
+  
   data %<>% dplyr::mutate(
     ID = mt_track_id(.),
     timestamp = mt_time(.)
@@ -74,15 +76,14 @@ rFunction = function(data, travelcut,
       )                     
   }
 
-  data$dist_m <- as.vector(move2::mt_distance(data))
-  data$kmph <- move2::mt_speed(data) %>% units::set_units("km/h") %>% as.vector()
+  
   data %<>% 
     arrange(mt_track_id(data), mt_time(data)) %>%
     # distinct(timestamp, .keep_all = TRUE) %>%
     mutate(
-      timediff_hrs = mt_time_lags(.) %>%
-        units::set_units("hours") %>%
-        as.vector()
+      timediff_hrs = as.vector(mt_time_lags(., units = "hours")),
+      dist_m = as.vector(mt_distance(., units = "m")),
+      kmph = as.vector(mt_speed(., units = "km/h"))
     ) 
   
 
