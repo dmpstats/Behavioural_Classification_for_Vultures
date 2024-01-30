@@ -44,6 +44,11 @@ rFunction = function(data, travelcut,
     return(data)}
   
   
+  if(travelcut <=  0 | !is.numeric(travelcut)) {
+    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
+    stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
+  }
+  
   
   logger.trace("Input is in correct format. Proceeding with classification for all IDs")
   
@@ -88,7 +93,7 @@ rFunction = function(data, travelcut,
   
 
   
-  ## 1. Speed Classification Prep -----------------------------------------------------
+  ## Identify stationary points ------------------------------------------------
   
   logger.info("[1] Preparing speed-classification data")
   
@@ -100,14 +105,19 @@ rFunction = function(data, travelcut,
     logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
     stop("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
   }
+  logger.info("Data Preparation - identify stationary points")
   
+  #' Identify stationary points
+  #' - events with speed <= travelcut == stationary (1),
+  #' - events where speed > travelcut == non-stationary (0),
+  #' - events with NA speed == stationary (1)
+
   data %<>%
     mutate(
       stationary = case_when(
         kmph < travelcut ~ 1,
         kmph > travelcut ~ 0,
-        is.na(kmph) | is.nan(kmph) ~ 1, # assume stationary if no data 
-        TRUE ~ NA
+        is.na(kmph) | is.nan(kmph) ~ 1 # assume stationary if no data
       )
     )
   
