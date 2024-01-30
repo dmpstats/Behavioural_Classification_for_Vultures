@@ -95,16 +95,6 @@ rFunction = function(data, travelcut,
   
   ## Identify stationary points ------------------------------------------------
   
-  logger.info("[1] Preparing speed-classification data")
-  
-  #' Speed Classification
-  #' Anything above travelcut is STravelling
-  #' Anything below is initially SResting
-  
-  if(travelcut <=  0 | !is.numeric(travelcut)) {
-    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
-    stop("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
-  }
   logger.info("Data Preparation - identify stationary points")
   
   #' Identify stationary points
