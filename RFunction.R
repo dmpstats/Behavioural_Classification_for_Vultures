@@ -51,6 +51,24 @@ rFunction = function(data, travelcut,
   
   
   logger.trace("Input is in correct format. Proceeding with classification for all IDs")
+  # validate `altbound` only if column named "altitude" is in input
+  if("altitude" %in% colnames(data)){
+    
+    if(!is.numeric(altbound)) {
+      logger.warn("`altbound` is non-numeric. Stopping computation - please check inputs")
+      stop("Altitude change threshold (`altbound`) is non-numeric. Please check input settings")
+      
+    } else if(altbound == 0){
+      
+      logger.warn(
+        paste0("Beware that altitude threshold (`altbound`) is set to 0m, which ",
+               "means that ANY change is altitude will be considered as ascencing/descending ",
+               "movement.")
+      )
+    }  
+  }
+  
+  logger.info("Input is in correct format. Proceeding with data preparation")
   
   
   # Data Preparation --------------------------------------------------------------------------------------
@@ -113,48 +131,37 @@ rFunction = function(data, travelcut,
   
   
   
-  ## 2. Altitude Reclassification Prep -------------------------------------------------
+  ## Detect Altitude Changes -------------------------------------------------
   
-  #' If a bird is ascending, it is STravelling
-  #' If a bird is flatlining, it remains SResting
-  #' If a bird is descending, 
-  #'      Next location is ascending/descending ==> STravelling
-  #'      Next location is flatlining ==> remains SResting
+  #' Categorize vertical movement based on altitude change
+  #'  (i) change in altitude to next location > threshold: altchange == "ascent"
+  #'  (ii) change in altitude to next location < -threshold: altchange == "descent"
+  #'  (iii) else (including NAs): altchange == "flatline"
   
-  logger.info("[2] Preparing altitude-classification data")
+  logger.info("Data Preparation - detect altitude change")
   
   if ("altitude" %in% colnames(data)) {
-    logger.trace("   Altitude column identified. Beginning altitude classification")
-    
-    if(!is.numeric(altbound)) {
-      logger.warn("    altbound is non-numeric. Stopping computation - please check inputs")
-      stop("    altbound (altitude threshold) is non-numeric. Please check input settings")
-    }
-    
+      
     # Classify altitude changes
     data %<>% 
       # Reset altitude change each day:
       group_by(ID, yearmonthday) %>%
       dplyr::mutate(
         
-        altitude = as.numeric(unlist(altitude)), # fix when input is character vector
+        altitude = as.numeric(altitude), # fix when input is character vector
         
-        altdiff = ifelse(!is.na(altitude) & !is.na(dplyr::lead(altitude)), dplyr::lead(altitude) - altitude, NA),
+        altdiff = dplyr::lead(altitude) - altitude,
         
         altchange = case_when(
           altdiff < -altbound ~ "descent",
           altdiff > altbound ~ "ascent",
-          is.na(altdiff) ~ "flatline",
-          TRUE ~ "flatline"
+          .default = "flatline"
         )) %>% 
       ungroup()
     
-    
-    
-    
   } else {
     
-    logger.warn("    No column named 'altitude' present. Skipping altitude classification")
+    logger.warn("Column 'altitude' is absent from input data. Altitude change will not be considered for classification")
     
   }
   
