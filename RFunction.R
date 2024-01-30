@@ -105,7 +105,7 @@ rFunction = function(data, travelcut,
   data %<>%
     mutate(
       stationary = case_when(
-        kmph < travelcut ~ 1,
+        kmph <= travelcut ~ 1,
         kmph > travelcut ~ 0,
         is.na(kmph) | is.nan(kmph) ~ 1 # assume stationary if no data
       )
