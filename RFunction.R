@@ -27,7 +27,8 @@ rFunction = function(data, travelcut,
                      # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
 ) {
   
-  # Check Input Data ----------------------------------------------------------------------------------------------
+
+  # Validate Input Data ----------------------------------------------------------------------------------------------
   
   logger.trace(paste0(
     "Input data provided:  \n", 
@@ -47,16 +48,15 @@ rFunction = function(data, travelcut,
   logger.trace("Input is in correct format. Proceeding with classification for all IDs")
   
   
-  # CLASSIFICATION STEPS --------------------------------------------------------------------------------------
+  # Data Preparation --------------------------------------------------------------------------------------
   
-  # Generate necessary data:
+  ##  Generate necessary overarching data
   data %<>% dplyr::mutate(
     ID = mt_track_id(.),
     timestamp = mt_time(.)
   )
   
   if ("timestamp_local" %in% colnames(data)) {
-    data %<>% mutate(yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""))
     data %<>% 
       mutate(
         yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""),
@@ -73,21 +73,19 @@ rFunction = function(data, travelcut,
           lubridate::second(timestamp)/3600
       )                     
   }
+
   data$dist_m <- as.vector(move2::mt_distance(data))
   data$kmph <- move2::mt_speed(data) %>% units::set_units("km/h") %>% as.vector()
-  #data$timediff_hrs <- lubridate::mt_time_lags(data)
   data %<>% 
     arrange(mt_track_id(data), mt_time(data)) %>%
     # distinct(timestamp, .keep_all = TRUE) %>%
     mutate(
-      #dist_m = sqrt((x - lag(x, default = NA))^2 + (y - lag(y, default = NA))^2),
-      timediff_hrs =   mt_time_lags(.) %>%
+      timediff_hrs = mt_time_lags(.) %>%
         units::set_units("hours") %>%
-        as.vector(),
-      #kmph = move2::mt_speed(data),
-      hour = lubridate::hour(mt_time(data))
+        as.vector()
     ) 
   
+
   
   ## 1. Speed Classification Prep -----------------------------------------------------
   
