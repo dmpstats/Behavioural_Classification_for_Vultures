@@ -39,6 +39,8 @@ rFunction = function(data, travelcut,
     "input data dimensions: ", toString(dim(data))
   ))
   
+  logger.info("Starting input validation")
+  
   if(nrow(data) == 0) {
     logger.warn("Input data is empty. Returning input.")
     return(data)}
@@ -67,6 +69,18 @@ rFunction = function(data, travelcut,
                "movement.")
       )
     }  
+  } 
+  
+  ## 'leeway' inputs ----
+  if(is.null(sunrise_leeway)) {
+    logger.warn(" |- No sunrise leeway provided as input. Defaulting to no leeway.")
+    sunrise_leeway <- 0
+  }
+  if(is.null(sunset_leeway)) {
+    logger.warn(" |- No sunset leeway provided as input. Defaulting to no leeway.")
+    sunset_leeway <- 0
+  }
+  
   
   ## Input data: time-related columns -----
   if("altitude" %!in% colnames(data)){
@@ -75,6 +89,28 @@ rFunction = function(data, travelcut,
     logger.info(" |- `altitude` column identified. Able to detect altitude changes.")
   }
   
+  
+  if ("timestamp_local" %!in% colnames(data)) {
+    logger.warn(
+      paste0(
+        " |- `timestamp_local` is not a column within the data. Classification process ", 
+        "may be flawed if timezones of time-related columns are not consistent. ",
+        "Please use 'Add Local and Solar Time' MoveApp to generate this column.")
+    )
+  }
+  
+  
+  if ("sunrise_timestamp" %!in% colnames(data) | "sunset_timestamp" %!in% colnames(data)) {
+    logger.fatal("`sunrise_timestamp` or `sunset timestamp` is not a column in the input data. Sunrise-sunset classification cannot be performed. Terminating - please use the 'Add Local and Solar Time' MoveApp in this workflow BEFORE this MoveApp")
+    stop(
+      paste0(
+        "Either `sunrise_timestamp` or `sunset timestamp` is not a column in the ",
+        "input data. Identification of night-time points is fundamental for the ",
+        "classification process. Please use the 'Add Local and Solar Time' MoveApp in ",
+        "the workflow BEFORE this MoveApp to add the sought columns.")
+    )
+  } else {
+    logger.info(" |- Sunrise and sunset columns identified. Able to perform night-time identification.")
   }
   
   
@@ -175,37 +211,23 @@ rFunction = function(data, travelcut,
   }
   
   
-  ## 3. Day-Night Reclassification Prep --------------------------------------------------
   
-  logger.info("[3] Preparing day-night classification")
+  ## Night-time point identification ----------------------------
+
+  #' (i) nightpoint == 0 if sunrise_timestamp < timestamp < sunrise_timestamp (+/- leeway), 
+  #' (ii) otherwise nightpoint == 1
   
-  # Check all columns present & inputs valid
-  
-  if ("timestamp_local" %!in% colnames(data)) {
-    logger.warn("   timestamp_local is not a column within the data. Overnight roosting classification may be flawed. Please use 'Add Local and Solar Time' MoveApp to generate this column.")
-  }
-  if(is.null(sunrise_leeway)) {
-    logger.warn("    No sunrise leeway provided as input. Defaulting to no leeway")
-    sunrise_leeway <- 0
-  }
-  if(is.null(sunset_leeway)) {
-    logger.warn("    No sunset leeway provided as input. Defaulting to no leeway")
-    sunset_leeway <- 0
-  }
-  
-  if ("sunrise_timestamp" %!in% colnames(data) | "sunset_timestamp" %!in% colnames(data)) {
-    logger.warn("    'sunrise_timestamp' or 'sunset timestamp' is not a column in the input data. Sunrise-sunset classification cannot be performed. Terminating - please use the 'Add Local and Solar Time' MoveApp in this workflow BEFORE this MoveApp")
-    stop()
-  } else {
-    logger.trace("    Sunrise and sunset columns identified. Able to perform sunrise-sunset classification")
-  }
-  
-  ### Add necessary columns
-  # Add 'nightpoint' column determining what is day/night:
+  logger.info(" |- Identify night-time locations")
+
   data %<>% mutate(
-    nightpoint = ifelse(!between(mt_time(.), sunrise_timestamp + lubridate::minutes(sunrise_leeway), sunset_timestamp + lubridate::minutes(sunset_leeway)), 1, 0)
-  )
-  
+    nightpoint = ifelse(
+      between(
+        lubridate::with_tz(timestamp, lubridate::tz(sunrise_timestamp)), # with_tz() ensures TZs consistency
+        sunrise_timestamp + lubridate::minutes(sunrise_leeway), 
+        sunset_timestamp + lubridate::minutes(sunset_leeway)
+      ), 
+      0, 1)
+    )
   
   
   
