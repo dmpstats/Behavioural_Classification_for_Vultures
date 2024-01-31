@@ -50,8 +50,9 @@ rFunction = function(data, travelcut,
   }
   
   
-  logger.trace("Input is in correct format. Proceeding with classification for all IDs")
-  # validate `altbound` only if column named "altitude" is in input
+  ## altbound ----
+  ## (only if column named "altitude" is in input dataset)
+  
   if("altitude" %in% colnames(data)){
     
     if(!is.numeric(altbound)) {
@@ -61,17 +62,28 @@ rFunction = function(data, travelcut,
     } else if(altbound == 0){
       
       logger.warn(
-        paste0("Beware that altitude threshold (`altbound`) is set to 0m, which ",
+        paste0(" |- Beware that altitude threshold (`altbound`) is set to 0m, which ",
                "means that ANY change is altitude will be considered as ascencing/descending ",
                "movement.")
       )
     }  
+  
+  ## Input data: time-related columns -----
+  if("altitude" %!in% colnames(data)){
+    logger.warn(" |- Column `altitude` is absent from input data. Unable to calculate altitude changes.")
+  } else{
+    logger.info(" |- `altitude` column identified. Able to detect altitude changes.")
   }
   
-  logger.info("Input is in correct format. Proceeding with data preparation")
+  }
+  
+  
+  
+  logger.info(" |- Input is in correct format. Proceeding with data preparation.")
   
   
   # Data Preparation --------------------------------------------------------------------------------------
+  logger.info("Initiate Data Preparation Steps")
   
   ## Generate overarching variables  ------
   logger.info("Data Preparation - generate overarching variables")
@@ -131,14 +143,14 @@ rFunction = function(data, travelcut,
   
   
   
-  ## Detect Altitude Changes -------------------------------------------------
+  ## Detect Altitude Changes ----------------------------------------
   
   #' Categorize vertical movement based on altitude change
   #'  (i) change in altitude to next location > threshold: altchange == "ascent"
   #'  (ii) change in altitude to next location < -threshold: altchange == "descent"
   #'  (iii) else (including NAs): altchange == "flatline"
   
-  logger.info("Data Preparation - detect altitude change")
+  logger.info(" |- Categorize altitude change between consecutive locations")
   
   if ("altitude" %in% colnames(data)) {
       
@@ -147,7 +159,6 @@ rFunction = function(data, travelcut,
       # Reset altitude change each day:
       group_by(ID, yearmonthday) %>%
       dplyr::mutate(
-        
         altitude = as.numeric(altitude), # fix when input is character vector
         
         altdiff = dplyr::lead(altitude) - altitude,
@@ -160,9 +171,7 @@ rFunction = function(data, travelcut,
       ungroup()
     
   } else {
-    
-    logger.warn("Column 'altitude' is absent from input data. Altitude change will not be considered for classification")
-    
+    logger.warn(" |- Unable to calculate altitude changes. Vertical movement will not be considered for classification.")
   }
   
   
