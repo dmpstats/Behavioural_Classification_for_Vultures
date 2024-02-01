@@ -231,38 +231,38 @@ rFunction = function(data, travelcut,
   
   
   
+  ## Calculate ACC variance ---------------
   
-  
-  ## 4. Accelerometer Relassification Prep -----------------------------------------------------------------------------------------------
-  
+  #' If ACC data is available, calculate variance in acceleration bursts
+  #' till subsequent location event - expect one variance statistic for each enabled ACC axes
   
   if ("acc_dt" %in% colnames(data)) {
     
-    logger.info("[4] Accelerometer data identified: preparing and unnesting")
+    # logical flag for all-NULL 'acc_dt' column 
+    acc_null <- all(purrr::map_lgl(data$acc_dt, is.null))
     
-    # Unnest ACC data
-    data <- prep_ACC(data, interpolate = FALSE)
+    if(!acc_null){
+      logger.info(" |- ACC data identified: calculating variance in acceleration between locations")
+      
+      # Unnest ACC data and compute ACC variance between consecutive locations
+      data <- acc_var(data, interpolate = FALSE) |> 
+        dplyr::select(-acc_dt)
+      
+      ACCclassify <- TRUE
+      
+    } else {
+      
+      data <- dplyr::select(data, -acc_dt)
+      ACCclassify <- FALSE
+      
+    }
+  } else{
     
-    
-    # Set up threshold table
-    thresh <- data.frame(
-      track = unique(mt_track_id(data)),
-      thresx = NA, thresy = NA, thresz = NA
-    )
-    
-    
-    
-    # Clean track data (remove NA columns)
-    #not_all_na <- function(x) any(!is.na(x))
-    #data <- mt_set_track_data(data, mt_track_data(data) %>% select(where(not_all_na))) 
-    
-    ACCclassify <- TRUE
-    
-  } else {
-    logger.info("[4] No accelerometer data detected: skipping ACC preparation")
     ACCclassify <- FALSE
-  }
+    
+  }  
   
+  if(!ACCclassify) logger.info("  |- No accelerometer data detected: skipping ACC preparation")
   
   
   ## 5. Roosting Reclassification Prep -----------------------------------------------------------------------------------------------
@@ -667,7 +667,6 @@ rFunction = function(data, travelcut,
     
   }
   
-  
   # Generate summary table
   behavsummary <- table(mt_track_id(data), data$behav)
   write.csv(behavsummary, file = appArtifactPath("behavsummary.csv"))
@@ -698,25 +697,17 @@ rFunction = function(data, travelcut,
 }
 
 
-# Accelerometer Interpolation Function --------------------------------------------
-
-prep_ACC <- function(data, interpolate = FALSE) {
-
-  #' This will interpolate ACC using the nearest two values on the condition that
-  #' both values are within 30mins of the location's timestamp
-  
-  # Unnest into variances ------------------------------
+# helper to compute acceleration variance till next location ---------------------
+acc_var <- function(data, interpolate = FALSE) {
   
   # Store track data for later recall
   tracklevel <- mt_track_data(data)
+  tm_col <- mt_time_column(data)
+  trk_col <- mt_track_id_column(data)
   
-  # Split between no ACC and ACC:
-  missrows <- filter(data, is.na(acc_dt)) 
-  accrows <- filter(data, !is.na(acc_dt))  
-
-  # Operate on ACC rows
-  loc_acc_var <- accrows %>% 
-    mutate(
+  # Unnest into variances
+  data <- data |> 
+    dplyr::mutate(
       var = purrr::map(acc_dt, \(acc_events){
         if(!is.null(acc_events$acc_burst)){
           # bind list of matrices (one per ACC event) by row
@@ -726,80 +717,52 @@ prep_ACC <- function(data, interpolate = FALSE) {
         } else{
           NULL
         }
-      })
+      }, 
+      .progress = "Summarising ACC")
     ) %>% 
-    unnest_wider(var, names_sep = "_")
-  
-  # Add empties to non-ACC rows 
-  missrows %<>% mutate(
-    var_acc_x = numeric(),
-    var_acc_y = numeric(),
-    var_acc_z = numeric()
-  )
-  
-  if(nrow(missrows) == 0){
-    alldat <- mt_as_move2(loc_acc_var, 
-                          track_id_column = mt_track_id_column(missrows),
-                          time_column = mt_time_column(missrows)) %>%
-      arrange(mt_track_id(.), mt_time(.))
-  }else{
-    alldat <- mt_stack(mt_as_move2(loc_acc_var, 
-                                   track_id_column = mt_track_id_column(missrows),
-                                   time_column = mt_time_column(missrows)
-    ), missrows,
-    .track_combine = "merge") %>%
-      arrange(mt_track_id(.), mt_time(.))
-  }
-  
-  # Restore track data (lost in above steps)
-  alldat <- mt_set_track_data(alldat, tracklevel)
-  
-  # Missing ACC Interpolation -----------------------------------------
-  # Complete this only if selected
+    tidyr::unnest_wider(var, names_sep = "_") |> 
+    # convert back to move2 object (property lost in the last unnest step)
+    mt_as_move2(time_column = tm_col, track_id_column = trk_col) |> 
+    # re-append track data
+    mt_set_track_data(tracklevel)
   
   if (interpolate == TRUE) {
     
-    acc_tmp <- alldat %>%
-      mutate(track = mt_track_id(.),
-             timestamp = mt_time(.),
-             interpACC = ifelse(is.na(acc_dt), TRUE, FALSE)) %>%
-      group_by(track) %>%
-      mutate(acc_ts = ifelse(is.na(acc_dt), NA, timestamp),
-             acc_ts = lubridate::as_datetime(acc_ts)
-      ) %>%
-      as.data.frame() %>%
-      dplyr::select(c("track", "timestamp", "acc_dt", "var_acc_x", "var_acc_y", "var_acc_z", "acc_ts", "interpACC")) %>%
-      group_by(track) %>%
-      mutate(acc_ts_next = acc_ts,
-             acc_ts_prev = acc_ts) %>%
-      fill(acc_ts_next, .direction = "up") %>%
-      fill(acc_ts_prev, .direction = "down") %>%
-      mutate(timetonext = ifelse(is.na(acc_dt), difftime(acc_ts_next, timestamp, units = "mins"), NA),
-             timetoprev = ifelse(is.na(acc_dt), difftime(timestamp, acc_ts_prev, units = "mins"), NA)
-      ) %>%
-      mutate(across(c(var_acc_x, var_acc_y, var_acc_z), ~ zoo::na.approx(.x, na.rm = FALSE, maxgap=4)))
+    #' Interpolate missing ACCs using the nearest two values on the condition that
+    #' both values are within 30mins of the location's timestamp
     
-    # Nullify cases which require interpolation of >30 minutes in either direction:
-    acc_tmp %<>% mutate(across(c(var_acc_x, var_acc_y, var_acc_z), ~ case_when(
-      (timetonext > 30) | (timetoprev > 30) ~ NA,
-      TRUE ~ .))) %>%
-      arrange(track, timestamp)
-    
-    # Return to mandata
-    alldat %<>%
-      arrange(mt_track_id(.), mt_time(.)) %>%
-      mutate(
-        var_acc_x = acc_tmp$var_acc_x,
-        var_acc_y = acc_tmp$var_acc_y,
-        var_acc_z = acc_tmp$var_acc_z,
-        interpACC = acc_tmp$interpACC
-      ) %>%
-      dplyr::select(-acc_dt)
-  } else {
-    alldat %<>% dplyr::select(-acc_dt)
+    data <- data |> 
+      dplyr::group_by(.data[[trk_col]]) |> 
+      dplyr::mutate(
+        # add temp columns
+        null_acc = purrr::map_lgl(acc_dt, is.null),
+        # max of lag to next and previous locations
+        acc_max_lag = pmax(
+          # time till next location
+          difftime(dplyr::lead(.data[[tm_col]]), .data[[tm_col]], units = "mins"),
+          # time since previous location
+          difftime(.data[[tm_col]], dplyr::lag(.data[[tm_col]]), units = "mins"), 
+          na.rm = TRUE)
+      ) |> 
+      dplyr::mutate(
+        # interpolate, keeping leading/trailing NAs and not interpolating more than 4 consecutive NAs
+        dplyr::across(dplyr::matches("var_acc_[xyz]"), ~ zoo::na.approx(.x, na.rm = FALSE, maxgap = 4)),
+        # nullify interpolated values if lag to previous or next location > 30mins
+        dplyr::across(dplyr::matches("var_acc_[xyz]"), ~ ifelse(null_acc & acc_max_lag > 30, NA, .x))
+      ) |> 
+      # identify locations with interpolated ACC
+      dplyr::mutate(interpACC = null_acc & !is.na(var_acc_x)) |> 
+      # remove temp columns
+      dplyr::select(-null_acc, -acc_max_lag) |> 
+      dplyr::ungroup()
   }
   
-  return(alldat)
+  return(data)
 }
+
+  
+  
+
+
 
 
