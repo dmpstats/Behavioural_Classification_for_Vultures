@@ -281,84 +281,110 @@ rFunction = function(data, travelcut,
   # # as it needs to filter out any roostgroup locations
   
  
-  ## 7. Speed-Time Reclassification --------------------------------------------
+  ## Stationary Speed Vs day-hours model  --------------------------------------------
   
-  #logger.trace("[7] Preparing speed-time model data")
-  # This is where the second-stage models will go, once reworked
-  #'
-  #'
+  logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
   
   # *** move this section to the standardising app???** ##
   # Probably more efficient ways to do this #
   
-  store <- NULL
-  for (bird in unique(data$ID)){
-    #print(bird)
-    newdat <- data %>%
-      filter(ID == bird) %>%
-      mutate(month = month(timestamp),
-             response = kmph + 0.00001) %>%
-      filter(!is.na(response), 
-             response < travelcut,
-             timestamp > (max(timestamp) - days(30))) 
-    
-    # ** add if statement or similar to ensure that if not enough data, 
-    # this modelling is not done (e.g. need 10 days??) ** #
-    # ALSO what happens if more than 30 days data provided??
-    
-    # predict to full dataset (we'll ignore the travelling points in the classification later)
-    preddat <- filter(data, ID == bird)
-    
-    initialModel <- glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
-    
-    salsa1dlist <- list(fitnessMeasure = 'BIC', 
-                        minKnots_1d = c(1), 
-                        maxKnots_1d = c(5), 
-                        startKnots_1d = c(1), 
-                        degree = c(2), 
-                        maxIterations = 10,
-                        gaps = c(0))
-    
-    # run SALSA
-    fit<-runSALSA1D(initialModel, 
-                    salsa1dlist, 
-                    varlist=c("hourmin"), 
-                    splineParams=NULL, 
-                    datain=newdat, 
-                    predictionData = filter(preddat, !is.na(kmph)),
-                    panelid = newdat$yearmonthday, 
-                    suppress.printout = TRUE)$bestModel
-    
-
-    
-    preddat$kmphpreds <- predict(object = fit, newdata = preddat)
-    
-    boots <- do.bootstrap.cress.robust(model.obj = fit, 
-                                       predictionGrid = preddat, 
-                                       B = 1000, robust = TRUE, 
-                                       cat.message = FALSE)
-    cis <- makeBootCIs(boots)
-    
-    # -- Construct prediction intervals
-    d = summary(fit)$dispersion
-    predint <- apply(boots, 2, function(x){rgamma(n = length(x), shape = 1/d, scale= x*d)})
-    pis <- t(apply(predint, 1, FUN = quantile,probs = c(0.025, 0.975)))
-    
-    preddat <- preddat %>% 
-      mutate("kmphCI2.5" = cis[,1],
-             "kmphCI97.5" = cis[,2],
-             "kmphPI2.5" = pis[,1], 
-             "kmphPI97.5" = pis[,2]) 
-    
-    # ultimately probably only need to keep last column (kmphPI97.5)
-    
-    store <- rbind(store, preddat)
-    # store the model objects too??
-  }
+  data <- data |> 
+    group_by(ID) |>
+    dplyr::group_split() |> 
+    purrr::map(\(dt){
+      
+      id <- unique(dt$ID)
+      
+      logger.info(paste0("  |> Fitting model for subject ", id, " @ ", lubridate::now()))
+      
+      newdat <- dt %>%
+        mutate(month = month(timestamp),
+               response = kmph + 0.00001) %>%
+        filter(!is.na(response), 
+               response < travelcut,
+               timestamp > (max(timestamp) - days(30))) 
+      
+      # ** add if statement or similar to ensure that if not enough data, 
+      # this modelling is not done (e.g. need 10 days??) ** #
+      # ALSO what happens if more than 30 days data provided??
+      #
+      # NOTE: Predicting to full dataset (we'll ignore the travelling points in the classification later)
+      
+      initialModel <- glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
+      
+      salsa1dlist <- list(fitnessMeasure = 'BIC', 
+                          minKnots_1d = c(1), 
+                          maxKnots_1d = c(5), 
+                          startKnots_1d = c(1), 
+                          degree = c(2), 
+                          maxIterations = 10,
+                          gaps = c(0))
+      
+      # run SALSA
+      fit <- tryCatch(
+        
+        runSALSA1D(
+          initialModel, 
+          salsa1dlist, 
+          varlist=c("hourmin"), 
+          splineParams=NULL, 
+          datain=newdat, 
+          predictionData = filter(dt, !is.na(kmph)),
+          panelid = newdat$yearmonthday, 
+          suppress.printout = TRUE)$bestModel,
+        
+        error = \(cnd){
+          logger.warn(
+            paste0(
+              "    |x Argh!! Something went wrong while fitting the model for subject ", id, ".\n",
+              "           |x `runSALSA1D()` returned the following error message:\n",
+              "           |x \"", conditionMessage(cnd), "\"\n", 
+              "           |x Speed thresholds WON'T be considered in the behaviour classification of subject ", id, "."
+            )
+          )
+          NULL
+        }
+      )
+      
+      if(!is_null(fit)){
+        
+        dt$kmphpreds <- predict(object = fit, newdata = dt)
+        
+        boots <- do.bootstrap.cress.robust(
+          model.obj = fit, 
+          predictionGrid = dt, 
+          B = 1000, robust = TRUE, 
+          cat.message = FALSE)
+        
+        cis <- makeBootCIs(boots)
+        
+        # -- Construct prediction intervals
+        d = summary(fit)$dispersion
+        predint <- apply(boots, 2, function(x){rgamma(n = length(x), shape = 1/d, scale= x*d)})
+        pis <- t(apply(predint, 1, FUN = quantile,probs = c(0.025, 0.975)))
+        
+        dt <- dt %>% 
+          mutate("kmphCI2.5" = cis[,1],
+                 "kmphCI97.5" = cis[,2],
+                 "kmphPI2.5" = pis[,1], 
+                 "kmphPI97.5" = pis[,2]) 
+        
+        # ultimately probably only need to keep last column (kmphPI97.5)  
+      } else{
+        
+        dt <- dt |> 
+          mutate(
+            kmphpreds = NA,
+            `kmphCI2.5` = NA,
+            `kmphCI97.5` = NA,
+            `kmphPI2.5` = NA, 
+            `kmphPI97.5` = NA
+          )
+      }
+      return(dt)
+    }) |> 
+    mt_stack()
   
-  # join stored thresholds back to main data
-  data <- store
-  rm(store)
   
   
   # PERFORM CLASSIFICATION STEPS 1-7 -------------------------------------------------------
