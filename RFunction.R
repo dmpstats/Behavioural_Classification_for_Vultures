@@ -265,107 +265,20 @@ rFunction = function(data, travelcut,
   if(!ACCclassify) logger.info("  |- No accelerometer data detected: skipping ACC preparation")
   
   
-  ## 5. Roosting Reclassification Prep -----------------------------------------------------------------------------------------------
+  ## Tag overnight roosting sites --------------------------
+  
+  logger.info(" |- Tagging overnight roosting sites.")
+  
+  data <- add_roost_cols(data, sunrise_leeway, sunset_leeway)
   
   
-  logger.info("[5] Preparing overnight-roost data")
-  
-  data %<>% 
-    mutate(temptime = mt_time(.)) %>%
-    group_by(ID, yearmonthday) %>%
-    mutate(
-      # Mark the first night point in the evening, and final in the morning:
-      endofday = case_when(
-        nightpoint == 1 & lag(nightpoint) == 0 ~ "FINAL",
-        nightpoint == 1 & lead(nightpoint) == 0 ~ "FIRST", 
-        TRUE ~ NA
-      ) ) %>% ungroup() %>%
-    
-    # Calculate time difference from each timestamp to sunrise/sunset (and their leeways):
-    mutate(
-      sunrise_difference = difftime(.$temptime, .$sunrise_timestamp + minutes(sunrise_leeway), units = "mins") %>% abs(),
-      sunset_difference = difftime(.$temptime, .$sunset_timestamp + minutes(sunset_leeway), units = "mins") %>% abs()
-    ) %>%
-    group_by(ID, yearmonthday) %>%
-    
-    mutate(closest = case_when(
-      # Mark the closest timestamps to sunrise/sunset, which will proxy for the absence of night points:
-      sunrise_difference == min(sunrise_difference, na.rm = T) ~ "SUNRISE",
-      sunset_difference == min(sunset_difference, na.rm = T) ~ "SUNSET", 
-      TRUE ~ NA
-    ))
-  
-  logger.trace("    Identifying locations for overnight roosting checks")
-  # Identify which days don't have night points in the morning/at night:
-  missing_nightpoints <- data %>%
-    as.data.frame() %>%
-    group_by(ID, yearmonthday) %>%
-    summarise(
-      morning = ifelse(any(endofday == "FIRST"), 1, 0),
-      evening = ifelse(any(endofday == "FINAL"), 1, 0),
-      .groups = "keep"
-    )
-  
-  # Join to data:
-  data %<>% left_join(missing_nightpoints, by = c("ID", "yearmonthday"))
-  
-  # And 'patch' these days up using the sunrise/sunset time-difference proxies:
-  data %<>% mutate(
-    endofday = case_when(
-      # If there is no morning point, but this is the nearest timestamp to sunset, 
-      # use it as a proxy:
-      is.na(endofday) & is.na(morning) & closest == "SUNRISE" ~ "FIRST",
-      # Same applies to evening:
       is.na(endofday) & is.na(evening) & closest == "SUNSET" ~ "FINAL",
-      TRUE ~ endofday
-    )
-  ) %>% dplyr::select(-c("morning", "evening", "closest", "sunrise_difference", "sunset_difference"))
-  
-  # Shortcut for calculating night-distances:
-  # Filter dataset to only the marked final/first point
-  # Bind distance using mt_distance and keep only overnight distances
-  # then merge back into main dataset
-  logger.trace("    Generating overnight roosting distances")
-  nightdists <- data %>% 
-    filter(!is.na(endofday)) %>% 
-    ungroup() %>%
-    mutate(endofday_dist = mt_distance(.),
-           endofday_dist = ifelse(
-             endofday == "FINAL", endofday_dist, NA
-           )) %>%
-    as.data.frame() %>%
-    dplyr::select(c("ID", mt_time_column(.), "endofday_dist"))
-  data %<>% left_join(nightdists, by = c("ID", mt_time_column(.)))
-  # This gives us one overnight-distance measure at the end of each bird's day
-  data %<>% mutate(
-    roostsite = ifelse(
-      !is.na(endofday_dist) & endofday_dist < 15,
-      1, 0
-    )
-  ) 
-  
-  logger.trace("    Generating roost-group data")
-  #  Calculate cumulative travel and reverse cumulative travel per day
-  data %<>%
-    group_by(ID, yearmonthday) %>%
-    mutate(travel01 = ifelse(stationary == T, 0, 1)) %>%
-    mutate(cum_trav = cumsum(travel01),
-           revcum_trav = spatstat.utils::revcumsum(travel01)) %>%
-    ungroup() %>%
-    mutate(
-      # Generate runs of stationary behaviour before/after final/first location:
-      roostgroup = ifelse(cum_trav == 0 | revcum_trav == 0, 1, 0),
-      roostgroup = rleid(roostgroup),
-      roostgroup = ifelse(cum_trav != 0 & revcum_trav != 0, NA, roostgroup)
-    ) 
-  
-  
-  ## 6. Cumulative Stationary Time Reassignment ------------------------------------------
-  
-  logger.info("[6] Preparing cumulative-time-spent-stationary data")
-  
-  # This will be generated in the reclassification step
-  # as it needs to filter out any roostgroup locations
+  # ## 6. Cumulative Stationary Time Reassignment
+  # 
+  # logger.info("[6] Preparing cumulative-time-spent-stationary data")
+  # 
+  # # This will be generated in the reclassification step
+  # # as it needs to filter out any roostgroup locations
   
  
   ## 7. Speed-Time Reclassification --------------------------------------------
@@ -676,7 +589,7 @@ rFunction = function(data, travelcut,
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "temptime", "endofday", "endofday_dist", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC",
+        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC",
         "kmphCI2.5", "kmphPI2.5", "kmphpreds"
       ) 
     ))
@@ -686,7 +599,7 @@ rFunction = function(data, travelcut,
     logger.trace("Removing select nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "ID", "temptime", "endofday_dist", "roostsite", "travel01", "cum_trav", "revcum_trav", "stationaryNotRoost", "cumtimestat", "kmphCI2.5", "kmphPI2.5", "kmphpreds"
+        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "stationaryNotRoost", "cumtimestat", "kmphCI2.5", "kmphPI2.5", "kmphpreds"
       ) 
     ))
   }
@@ -697,7 +610,10 @@ rFunction = function(data, travelcut,
 }
 
 
-# helper to compute acceleration variance till next location ---------------------
+# //////////////////////////////////////////////////////////////////////////////
+# Helper Functions ------
+
+#' Compute acceleration variance till next location ---------------------------
 acc_var <- function(data, interpolate = FALSE) {
   
   # Store track data for later recall
@@ -762,7 +678,100 @@ acc_var <- function(data, interpolate = FALSE) {
 
   
   
-
+#' derive and add roosting columns to data -----------------------------------------------
+#' New columns relevant for classification:
+#'  - `roostsite`: identifies overnight roosting sites
+#'  - `roostgroup`: identifies groups of locations with roost-like behaviour (consecutive non-travelling locations)
+add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
+  
+  data %<>% 
+    group_by(ID, yearmonthday) %>%
+    mutate(
+      temptime = lubridate::with_tz(timestamp, lubridate::tz(sunrise_timestamp)), # ensuring all timestamps are in same tz
+      # Mark the final and first daytime points in each day 
+      endofday = case_when(
+        nightpoint == 1 & lag(nightpoint) == 0 ~ "FINAL",
+        nightpoint == 1 & lead(nightpoint) == 0 ~ "FIRST", 
+        TRUE ~ NA
+      ) ) %>% 
+    # Calculate time difference from each timestamp to sunrise/sunset (and their leeways):
+    mutate(
+      sunrise_difference = difftime(temptime, sunrise_timestamp + minutes(sunrise_leeway), units = "mins") %>% abs(),
+      sunset_difference = difftime(temptime, sunset_timestamp + minutes(sunset_leeway), units = "mins") %>% abs()
+    ) %>%
+    mutate(closest = case_when(
+      # Mark the closest timestamps to sunrise/sunset, which will proxy for the absence of night points:
+      sunrise_difference == min(sunrise_difference, na.rm = T) ~ "SUNRISE",
+      sunset_difference == min(sunset_difference, na.rm = T) ~ "SUNSET", 
+      TRUE ~ NA
+    ))
+  
+  logger.trace("    + Identifying locations for overnight roosting checks")
+  # Identify which days don't have night points in the morning/at night:
+  missing_nightpoints <- data %>%
+    as.data.frame() %>%
+    group_by(ID, yearmonthday) %>%
+    summarise(
+      morning = ifelse(any(endofday == "FIRST"), 1, 0),
+      evening = ifelse(any(endofday == "FINAL"), 1, 0),
+      .groups = "keep"
+    )
+  
+  # Join to data:
+  data %<>% left_join(missing_nightpoints, by = c("ID", "yearmonthday"))
+  
+  # And 'patch' these days up using the sunrise/sunset time-difference proxies:
+  data %<>% mutate(
+    endofday = case_when(
+      # If there is no morning point, but this is the nearest timestamp to sunset, 
+      # use it as a proxy:
+      is.na(endofday) & is.na(morning) & closest == "SUNRISE" ~ "FIRST",
+      # Same applies to evening:
+      is.na(endofday) & is.na(evening) & closest == "SUNSET" ~ "FINAL",
+      TRUE ~ endofday
+    )
+  ) %>% dplyr::select(-c("temptime", "morning", "evening", "closest", "sunrise_difference", "sunset_difference"))
+  
+  # Shortcut for calculating night-distances:
+  # Filter dataset to only the marked final/first point
+  # Bind distance using mt_distance and keep only overnight distances
+  # then merge back into main dataset
+  logger.trace("    + Generating overnight roosting distances")
+  nightdists <- data %>% 
+    filter(!is.na(endofday)) %>% 
+    ungroup() %>%
+    mutate(
+      endofday_dist_m = mt_distance(., units = "m"),
+      endofday_dist_m = ifelse(endofday == "FINAL", endofday_dist_m, NA)
+    ) %>%
+    as.data.frame() %>%
+    dplyr::select(c(ID, mt_time_column(.), endofday_dist_m))
+  
+  data %<>% left_join(nightdists, by = c("ID", mt_time_column(.)))
+  
+  # This gives us one overnight-distance measure at the end of each bird's day
+  data %<>% mutate(
+    roostsite = ifelse(
+      !is.na(endofday_dist_m) & endofday_dist_m < 15,
+      1, 0
+    )
+  ) 
+  
+  logger.trace("    + Generating roost-group data")
+  #  Calculate cumulative travel and reverse cumulative travel per day
+  data %<>%
+    group_by(ID, yearmonthday) %>%
+    mutate(travel01 = ifelse(stationary == 1, 0, 1)) %>%
+    mutate(cum_trav = cumsum(travel01),
+           revcum_trav = spatstat.utils::revcumsum(travel01)) %>%
+    ungroup() %>%
+    mutate(
+      # Generate runs of stationary behaviour before/after final/first location:
+      roostgroup = ifelse(cum_trav == 0 | revcum_trav == 0, 1, 0),
+      roostgroup = rleid(roostgroup),
+      roostgroup = ifelse(cum_trav != 0 & revcum_trav != 0, NA, roostgroup)
+    ) 
+}
 
 
 
