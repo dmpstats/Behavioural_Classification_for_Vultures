@@ -14,6 +14,7 @@ library("zoo")
 library("spatstat.utils")
 
 `%!in%` <- Negate(`%in%`)
+not_null <- Negate(is.null)
 
 
 # Main RFunction -------------------------------------------------------------------------------------
@@ -46,6 +47,7 @@ rFunction = function(data, travelcut,
     return(data)}
   
   
+  ## travelcut ----
   if(travelcut <=  0 | !is.numeric(travelcut)) {
     logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
     stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
@@ -58,14 +60,14 @@ rFunction = function(data, travelcut,
   if("altitude" %in% colnames(data)){
     
     if(!is.numeric(altbound)) {
-      logger.warn("`altbound` is non-numeric. Stopping computation - please check inputs")
-      stop("Altitude change threshold (`altbound`) is non-numeric. Please check input settings")
+      logger.warn("`altbound` is non-numeric. Stopping computation - please check inputs.")
+      stop("Altitude change threshold (`altbound`) is non-numeric. Please check input settings.")
       
     } else if(altbound == 0){
       
       logger.warn(
-        paste0(" |- Beware that altitude threshold (`altbound`) is set to 0m, which ",
-               "means that ANY change is altitude will be considered as ascencing/descending ",
+        paste0(" |- Altitude threshold (`altbound`) is set to 0m, and thus ",
+               "ANY change is altitude will be considered as ascencing/descending ",
                "movement.")
       )
     }  
@@ -84,7 +86,7 @@ rFunction = function(data, travelcut,
   
   ## Input data: time-related columns -----
   if("altitude" %!in% colnames(data)){
-    logger.warn(" |- Column `altitude` is absent from input data. Unable to calculate altitude changes.")
+    logger.warn(" |- Column `altitude` is absent from input data.")
   } else{
     logger.info(" |- `altitude` column identified. Able to detect altitude changes.")
   }
@@ -94,7 +96,7 @@ rFunction = function(data, travelcut,
     logger.warn(
       paste0(
         " |- `timestamp_local` is not a column within the data. Classification process ", 
-        "may be flawed if timezones of time-related columns are not consistent. ",
+        "may be flawed if timezones of time-related columns are inconsistent. ",
         "Please use 'Add Local and Solar Time' MoveApp to generate this column.")
     )
   }
@@ -118,11 +120,12 @@ rFunction = function(data, travelcut,
   logger.info(" |- Input is in correct format. Proceeding with data preparation.")
   
   
-  # Data Preparation --------------------------------------------------------------------------------------
+  # Data Preparation ===========================================================
+  
   logger.info("Initiate Data Preparation Steps")
   
-  ## Generate overarching variables  ------
-  logger.info("Data Preparation - generate overarching variables")
+  ## Generate overarching variables  ------------------------------
+  logger.info(" |- Generate overarching variables")
   
   data %<>% dplyr::mutate(
     ID = mt_track_id(.),
@@ -146,7 +149,6 @@ rFunction = function(data, travelcut,
           lubridate::second(timestamp)/3600
       )                     
   }
-
   
   data %<>% 
     arrange(mt_track_id(data), mt_time(data)) %>%
@@ -158,10 +160,9 @@ rFunction = function(data, travelcut,
     ) 
   
 
+  ## Identify stationary points -----------------------------------
   
-  ## Identify stationary points ------------------------------------------------
-  
-  logger.info("Data Preparation - identify stationary points")
+  logger.info(" |- Identify stationary points")
   
   #' Identify stationary points
   #' - events with speed <= travelcut == stationary (1),
@@ -179,16 +180,16 @@ rFunction = function(data, travelcut,
   
   
   
-  ## Detect Altitude Changes ----------------------------------------
+  ## Detect Altitude Changes -------------------------------------
   
   #' Categorize vertical movement based on altitude change
   #'  (i) change in altitude to next location > threshold: altchange == "ascent"
   #'  (ii) change in altitude to next location < -threshold: altchange == "descent"
   #'  (iii) else (including NAs): altchange == "flatline"
   
-  logger.info(" |- Categorize altitude change between consecutive locations")
-  
   if ("altitude" %in% colnames(data)) {
+    
+    logger.info(" |- Categorize altitude change between consecutive locations")
       
     # Classify altitude changes
     data %<>% 
@@ -205,9 +206,8 @@ rFunction = function(data, travelcut,
           .default = "flatline"
         )) %>% 
       ungroup()
-    
   } else {
-    logger.warn(" |- Unable to calculate altitude changes. Vertical movement will not be considered for classification.")
+    logger.warn(" |- Column `altitude` not present in input data - skipping altitude change calculations.")
   }
   
   
@@ -231,7 +231,7 @@ rFunction = function(data, travelcut,
   
   
   
-  ## Calculate ACC variance ---------------
+  ## Calculate ACC variance ----------------------------
   
   #' If ACC data is available, calculate variance in acceleration bursts
   #' till subsequent location event - expect one variance statistic for each enabled ACC axes
@@ -242,7 +242,7 @@ rFunction = function(data, travelcut,
     acc_null <- all(purrr::map_lgl(data$acc_dt, is.null))
     
     if(!acc_null){
-      logger.info(" |- ACC data identified: calculating variance in acceleration between locations")
+      logger.info(" |- ACC data identified: calculating variance in acceleration between locations.")
       
       # Unnest ACC data and compute ACC variance between consecutive locations
       data <- acc_var(data, interpolate = FALSE) |> 
@@ -251,28 +251,23 @@ rFunction = function(data, travelcut,
       ACCclassify <- TRUE
       
     } else {
-      
       data <- dplyr::select(data, -acc_dt)
       ACCclassify <- FALSE
-      
     }
   } else{
-    
     ACCclassify <- FALSE
-    
   }  
   
-  if(!ACCclassify) logger.info("  |- No accelerometer data detected: skipping ACC preparation")
+  if(!ACCclassify) logger.info("  |- No accelerometer data detected: skipping ACC preparation.")
   
   
-  ## Tag overnight roosting sites --------------------------
+  ## Identify overnight roosting sites  --------------------------
   
-  logger.info(" |- Tagging overnight roosting sites.")
+  logger.info(" |- Deriving overnight roosting sites.")
   
   data <- add_roost_cols(data, sunrise_leeway, sunset_leeway)
   
   
-      is.na(endofday) & is.na(evening) & closest == "SUNSET" ~ "FINAL",
   # ## 6. Cumulative Stationary Time Reassignment
   # 
   # logger.info("[6] Preparing cumulative-time-spent-stationary data")
@@ -387,13 +382,14 @@ rFunction = function(data, travelcut,
   
   
   
-  # PERFORM CLASSIFICATION STEPS 1-7 -------------------------------------------------------
+  
+  # Bahaviour Classification Steps [1 -7] ========================================================
   
   logger.info("All data prepared. Performing all classification steps")
   
   
-  #### 1. Speed Classification ----
-  logger.info("[1] Performing speed classification")
+  ## [1] Speed Classification ----
+  logger.info(" |- [1] Performing speed classification")
   data %<>% mutate(
     # Add column to explain classification:
     RULE = ifelse(stationary == 1, "[1] Low speed","[1] High speed"), 
