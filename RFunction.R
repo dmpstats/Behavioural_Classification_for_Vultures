@@ -417,23 +417,45 @@ rFunction = function(data, travelcut,
   logger.info(paste0("   |> ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
   
   
-  #### 2. Altitude Classification ----
-  logger.info("[2] Performing altitude classification")
-  data %<>%
-    mutate(
-      RULE = case_when(
-        (behav == "SResting") & (altchange == "ascent") ~ "[2] Altitude increasing",
-        (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "[2] Altitude decreasing",
-        TRUE ~ RULE
-      ),
-      behav = case_when(
-        (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
-        (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
-        TRUE ~ behav
+  ## [2] Altitude Classification ----
+  
+  #' Resting events reclassified as travelling according to the following rules:
+  #' (i) If a bird is ascending ==> STravelling
+  #' (ii) If a bird is descending AND:
+  #'      Next location is ascending/descending ==> STravelling
+  #'      Next location is flatlining ==> remains SResting
+  #' (iii) If a bird is flatlining, it remains SResting
+  
+  if(alt_classify){
+  
+    logger.info(" |- [2] Performing altitude classification")
+    
+    data %<>%
+      # QUESTION (BC): shouldn't this step be grouped by bird given the `lead` function?
+      # group_by(ID) %>%
+      mutate(
+        RULE = case_when(
+          (behav == "SResting") & (altchange == "ascent") ~ "[2] Altitude increasing",
+          (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "[2] Altitude decreasing",
+          TRUE ~ RULE
+        ),
+        behav = case_when(
+          (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
+          (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
+          TRUE ~ behav
+        ),
+        # # QUESTION (BC): Change stationary state to conform with above resting -> travelling re-classification??
+        # stationary = ifelse(behav == "STravelling", 0, stationary)
       )
-    )
-  # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))
+    
+    # Log results
+    logger.info(paste0("   ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))  
+  
+  } else {
+    logger.warn("|- [2] Skipping altitude classification due to absence of altitude data")
+  }
+  
+  
   
   
   #### 3. Sunrise-Sunset Classification -----
