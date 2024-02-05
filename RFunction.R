@@ -505,8 +505,20 @@ rFunction = function(data, travelcut,
   
   
 
-  #### 4. Roosting Classification -----
-  logger.info("[4] Performing roosting classification")
+  ## [4] Roosting-site Classification -----
+  
+  #' Current resting locations re-classified as roosting if identified as part
+  #' of a roosting-site, which is defined as: 
+  #' 
+  #' Consecutive stationary locations (`roostgroup`) encompassing night-time
+  #' locations with total overnight distance traveled less than 15 meters
+  #' (`roostsite`)
+  #' 
+  #' NOTE: STravelling locations not affected by this step, even if they were
+  #' tagged as part of a roost-site
+  
+  logger.info(" |- [4] Performing roosting-site classification")
+  
   data %<>%
     group_by(ID, roostgroup) %>%
     mutate(
@@ -517,13 +529,13 @@ rFunction = function(data, travelcut,
     ungroup()
   
   # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[4] Stationary at roost site", na.rm = T), " locations re-classified as SRoosting"))
+  logger.info(paste0("   |> ", sum(data$RULE == "[4] Stationary at roost site", na.rm = T), " locations re-classified as SRoosting"))
 
   logger.trace(paste0("   ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
   logger.trace(paste0("   ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
   logger.trace(paste0("   ", sum(data$behav == "SRoosting", na.rm = T), " locations classified as SRoosting"))
   
-
+  
   
   #### 5. Cumulative-Time Reclassification -----
   logger.info("[5] Performing stationary-time classification")
