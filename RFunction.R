@@ -458,8 +458,16 @@ rFunction = function(data, travelcut,
   
   
   
-  #### 3. Sunrise-Sunset Classification -----
-  logger.info("[3] Performing night-time classification")
+  ## [3] Night-time Classification -----
+  
+  #' Resting locations re-classified as (night-time) roosting if they've been
+  #' identified as a night point (i.e. occurred between sunset and sunrise)
+  #' 
+  #' NOTE: STravelling locations are kept unchanged, i.e. travelling at
+  #' night-time treated as a valid behaviour at this point
+  
+  logger.info(" |- [3] Performing night-time classification")
+  
   data %<>%
     mutate(
       RULE = case_when(
@@ -471,9 +479,12 @@ rFunction = function(data, travelcut,
         TRUE ~ behav
       )
     )
+  
   logger.trace(paste0("   ", sum(data$RULE == "[3] Stationary at night", na.rm = T), " locations re-classified as SRoosting"))
   
-  # use night time roosting to estimate ACC thresholds if ACC available
+  
+  
+  ## [*] Estimate ACC thresholds at night-time roosting locations -----
   if (ACCclassify == TRUE) {
     roostpoints <- data %>%
       filter(behav == "SRoosting") %>%
