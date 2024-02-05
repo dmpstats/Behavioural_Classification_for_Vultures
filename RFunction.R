@@ -425,13 +425,19 @@ rFunction = function(data, travelcut,
   #'      Next location is ascending/descending ==> STravelling
   #'      Next location is flatlining ==> remains SResting
   #' (iii) If a bird is flatlining, it remains SResting
+  #' 
+  #' NOTE: stationary locations are not re-classified here, so this step can
+  #' produce locations with both `stationary == 1` AND `behav == STravelling`.
+  #' This can be a bit counter-intuitive, but we don't want to change it,
+  #' otherwise the roosting-site identification performed in Data Prep would be
+  #' outdated
   
   if(alt_classify){
   
     logger.info(" |- [2] Performing altitude classification")
     
     data %<>%
-      # QUESTION (BC): shouldn't this step be grouped by bird given the `lead` function?
+      # QUESTION (BC): shouldn't this step be grouped by bird given we're using `lead()`?
       # group_by(ID) %>%
       mutate(
         RULE = case_when(
@@ -449,7 +455,7 @@ rFunction = function(data, travelcut,
       )
     
     # Log results
-    logger.info(paste0("   ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))  
+    logger.info(paste0("   |> ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))  
   
   } else {
     logger.warn("|- [2] Skipping altitude classification due to absence of altitude data")
@@ -460,11 +466,11 @@ rFunction = function(data, travelcut,
   
   ## [3] Night-time Classification -----
   
-  #' Resting locations re-classified as (night-time) roosting if they've been
-  #' identified as a night point (i.e. occurred between sunset and sunrise)
+  #' Current resting locations re-classified as (night-time) roosting if they've 
+  #' been identified as a night point (i.e. occurred between sunset and sunrise)
   #' 
-  #' NOTE: STravelling locations are kept unchanged, i.e. travelling at
-  #' night-time treated as a valid behaviour at this point
+  #' NOTE: STravelling locations are kept unchanged, i.e. night-time travelling 
+  #' treated as a valid behaviour
   
   logger.info(" |- [3] Performing night-time classification")
   
@@ -480,7 +486,7 @@ rFunction = function(data, travelcut,
       )
     )
   
-  logger.trace(paste0("   ", sum(data$RULE == "[3] Stationary at night", na.rm = T), " locations re-classified as SRoosting"))
+  logger.trace(paste0("   |> ", sum(data$RULE == "[3] Stationary at night", na.rm = T), " locations re-classified as SRoosting"))
   
   
   
