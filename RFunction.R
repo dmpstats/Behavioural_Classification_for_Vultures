@@ -189,25 +189,39 @@ rFunction = function(data, travelcut,
   
   if ("altitude" %in% colnames(data)) {
     
-    logger.info(" |- Categorize altitude change between consecutive locations")
+    if(!all(is.na(data$altitude))){
       
-    # Classify altitude changes
-    data %<>% 
-      # Reset altitude change each day:
-      group_by(ID, yearmonthday) %>%
-      dplyr::mutate(
-        altitude = as.numeric(altitude), # fix when input is character vector
-        
-        altdiff = dplyr::lead(altitude) - altitude,
-        
-        altchange = case_when(
-          altdiff < -altbound ~ "descent",
-          altdiff > altbound ~ "ascent",
-          .default = "flatline"
-        )) %>% 
-      ungroup()
+      logger.info(" |- Categorize altitude change between consecutive locations")
+      
+      # Classify altitude changes
+      data %<>% 
+        # Reset altitude change each day:
+        group_by(ID, yearmonthday) %>%
+        dplyr::mutate(
+          altitude = as.numeric(altitude), # fix when input is character vector
+          
+          altdiff = dplyr::lead(altitude) - altitude,
+          
+          altchange = case_when(
+            altdiff < -altbound ~ "descent",
+            altdiff > altbound ~ "ascent",
+            .default = "flatline"
+          )) %>% 
+        ungroup()
+      
+      alt_classify <- TRUE
+      
+    } else{
+      alt_classify <- FALSE  
+    }
   } else {
-    logger.warn(" |- Column `altitude` not present in input data - skipping altitude change calculations.")
+    alt_classify <- FALSE  
+  }
+  
+  if(!alt_classify){
+    logger.warn(
+      paste0(" |- Column `altitude` is either not present in input data or is entirely ",
+             "filled with NAs - skipping altitude change calculations."))
   }
   
   
@@ -259,6 +273,7 @@ rFunction = function(data, travelcut,
   }  
   
   if(!ACCclassify) logger.info("  |- No accelerometer data detected: skipping ACC preparation.")
+  
   
   
   ## Identify overnight roosting sites  --------------------------
