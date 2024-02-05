@@ -291,6 +291,7 @@ rFunction = function(data, travelcut,
   # # as it needs to filter out any roostgroup locations
   
  
+  
   ## Stationary Speed Vs day-hours model  --------------------------------------------
   
   logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
@@ -350,9 +351,9 @@ rFunction = function(data, travelcut,
               "           |x `runSALSA1D()` returned the following error message:\n",
               "           |x \"", conditionMessage(cnd), "\"\n", 
               "           |x Speed thresholds WON'T be considered in the behaviour classification of subject ", id, "."
-            )
-          )
-          NULL
+            ))
+          
+          return(NULL)
         }
       )
       
@@ -412,8 +413,8 @@ rFunction = function(data, travelcut,
   )
   
   # Log results
-  logger.trace(paste0("   ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
-  logger.trace(paste0("   ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
+  logger.info(paste0("   |> ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
+  logger.info(paste0("   |> ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
   
   
   #### 2. Altitude Classification ----
@@ -743,7 +744,7 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
       TRUE ~ NA
     ))
   
-  logger.trace("    + Identifying locations for overnight roosting checks")
+  logger.trace("  |> Identifying locations for overnight roosting checks")
   # Identify which days don't have night points in the morning/at night:
   missing_nightpoints <- data %>%
     as.data.frame() %>%
@@ -773,7 +774,7 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
   # Filter dataset to only the marked final/first point
   # Bind distance using mt_distance and keep only overnight distances
   # then merge back into main dataset
-  logger.trace("    + Generating overnight roosting distances")
+  logger.trace("  |> Generating overnight roosting distances")
   nightdists <- data %>% 
     filter(!is.na(endofday)) %>% 
     ungroup() %>%
@@ -794,7 +795,7 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
     )
   ) 
   
-  logger.trace("    + Generating roost-group data")
+  logger.trace("  |> Generating roost-group data")
   #  Calculate cumulative travel and reverse cumulative travel per day
   data %<>%
     group_by(ID, yearmonthday) %>%
