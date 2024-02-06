@@ -544,8 +544,8 @@ rFunction = function(data, travelcut,
   #' run durations present in the data
   data %<>% 
     mutate(
-      RULE = ifelse(cumtimestat > dayRunThresh & behav == "SResting", "[5] Extended stationary behaviour", RULE),
-      behav = ifelse(cumtimestat > dayRunThresh & behav == "SResting", "SFeeding", behav),
+      RULE = ifelse(!is.na(cumtimestat) & cumtimestat > dayRunThresh & behav == "SResting", "[5] Extended stationary behaviour", RULE),
+      behav = ifelse(!is.na(cumtimestat) & cumtimestat > dayRunThresh & behav == "SResting", "SFeeding", behav),
       #RULE = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "[5] Extended stationary behaviour", RULE),
       #behav = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "SFeeding", behav),
     ) %>%
