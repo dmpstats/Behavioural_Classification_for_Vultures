@@ -577,9 +577,16 @@ rFunction = function(data, travelcut,
   
   
   
-  #### 7. Accelerometer Classification -----
+  ## [7] Accelerometer Classification -----
   
-  logger.info("[7] Performing accelerometer classification")
+  #' Remaining Resting locations re-classified as Feeding if the variance in
+  #' acceleration to the next location exceeds the 95th percentile of
+  #' acceleration variation values during night-time roosting, in any of the
+  #' active accelerometer axis. Percentile thresholds are calculated for each
+  #' individual from input data.
+  
+  logger.info(" [7] Performing accelerometer classification")
+  
   if (ACCclassify == TRUE) {
     data %<>% 
       left_join(roostpoints, by = "ID") %>%
@@ -588,18 +595,17 @@ rFunction = function(data, travelcut,
           # For ACC values that exceed their threshold, reclassify to feeding
           (behav == "SResting") & (var_acc_x > thresx) ~ "[7] ACC not similar to roosting",
           (behav == "SResting") & (var_acc_y > thresy) ~ "[7] ACC not similar to roosting",
-          (behav == "SResting") & (var_acc_z > thresz) ~ "[7] ACC not similar to roosting",
-          #behav == "SFeeding" ~ "[7] ACC not similar to roosting",
-          TRUE ~ RULE),
+          (behav == "SResting") & (var_acc_z > thresz) ~ "[7] ACC not similar to roosting", 
+          TRUE ~ RULE
+        ),
         behav = case_when(
-        
           # For ACC values that exceed their threshold, reclassify to feeding
           (behav == "SResting") & (var_acc_x > thresx) ~ "SFeeding",
           (behav == "SResting") & (var_acc_y > thresy) ~ "SFeeding",
           (behav == "SResting") & (var_acc_z > thresz) ~ "SFeeding",
           TRUE ~ behav
-        ))%>%
-      
+        )
+      ) %>%
       # Move these attributes to track data:
       mt_as_track_attribute(c("thresx", "thresy", "thresz"))
   }
