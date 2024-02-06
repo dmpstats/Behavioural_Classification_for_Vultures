@@ -124,7 +124,9 @@ rFunction = function(data, travelcut,
   
   logger.info("Initiate Data Preparation Steps")
   
+  
   ## Generate overarching variables  ------------------------------
+
   logger.info(" |- Generate overarching variables")
   
   data %<>% dplyr::mutate(
@@ -132,6 +134,15 @@ rFunction = function(data, travelcut,
     timestamp = mt_time(.)
   )
   
+  #' NOTE: `yearmonthday`, `hourmin`, `timediff_hrs`, `dist_m` & `kmph`
+  #' variables are expected to provide information between consecutive
+  #' locations. If the Standardizing App (or other) has been used earlier in the
+  #' WF, these cols could already be present in the input. However, there is no
+  #' guarantee that input has been thinned by other in-between App. Therefore, to
+  #' ensure accuracy, we always (re)generate these columns here.
+  
+  # Add date label and day-hours (i.e. decimal hours since start of day)
+  # QUESTION (BC): Should we restrict usage to input with local_time only? I think we should
   if ("timestamp_local" %in% colnames(data)) {
     data %<>% 
       mutate(
@@ -150,6 +161,7 @@ rFunction = function(data, travelcut,
       )                     
   }
   
+  # Add time gap, distance and speed cols
   data %<>% 
     arrange(mt_track_id(data), mt_time(data)) %>%
     # distinct(timestamp, .keep_all = TRUE) %>%
@@ -338,7 +350,7 @@ rFunction = function(data, travelcut,
         error = \(cnd){
           logger.warn(
             paste0(
-              "    |x Argh!! Something went wrong while fitting the model for subject ", id, ".\n",
+              "    |x Ouch!! Something went wrong while fitting the model for subject ", id, ".\n",
               "           |x `runSALSA1D()` returned the following error message:\n",
               "           |x \"", conditionMessage(cnd), "\"\n", 
               "           |x Speed thresholds WON'T be considered in the behaviour classification of subject ", id, "."
@@ -396,7 +408,7 @@ rFunction = function(data, travelcut,
   
   
   ## [1] Speed Classification ----
-  logger.info(" |- [1] Performing speed classification")
+  logger.info(" [1] Performing speed classification")
   data %<>% mutate(
     # Add column to explain classification:
     RULE = ifelse(stationary == 1, "[1] Low speed","[1] High speed"), 
@@ -410,7 +422,7 @@ rFunction = function(data, travelcut,
   
   ## [2] Altitude Classification ----
   
-  #' Resting events reclassified as travelling according to the following rules:
+  #' Remaining resting locations reclassified as travelling according to the following rules:
   #' (i) If a bird is ascending ==> STravelling
   #' (ii) If a bird is descending AND:
   #'      Next location is ascending/descending ==> STravelling
@@ -425,7 +437,7 @@ rFunction = function(data, travelcut,
   
   if(alt_classify){
   
-    logger.info(" |- [2] Performing altitude classification")
+    logger.info(" [2] Performing altitude classification")
     
     data %<>%
       # QUESTION (BC): shouldn't this step be grouped by bird given we're using `lead()`?
@@ -457,13 +469,13 @@ rFunction = function(data, travelcut,
   
   ## [3] Night-time Classification -----
   
-  #' Current resting locations re-classified as (night-time) roosting if they've 
+  #' Remaining resting locations re-classified as (night-time) roosting if they've 
   #' been identified as a night point (i.e. occurred between sunset and sunrise)
   #' 
   #' NOTE: STravelling locations are kept unchanged, i.e. night-time travelling 
   #' treated as a valid behaviour
   
-  logger.info(" |- [3] Performing night-time classification")
+  logger.info(" [3] Performing night-time classification")
   
   data %<>%
     mutate(
@@ -496,9 +508,9 @@ rFunction = function(data, travelcut,
   
   
 
-  ## [4] Roosting-site Classification -----
+  ## [4] Roosting-site Classification -------------
   
-  #' Current resting locations re-classified as roosting if identified as part
+  #' Remaining resting locations re-classified as roosting if identified as part
   #' of a roosting-site, which is defined as: 
   #' 
   #' Consecutive stationary locations (`roostgroup`) encompassing night-time
@@ -508,7 +520,7 @@ rFunction = function(data, travelcut,
   #' NOTE: STravelling locations not affected by this step, even if they were
   #' tagged as part of a roost-site
   
-  logger.info(" |- [4] Performing roosting-site classification")
+  logger.info(" [4] Performing roosting-site classification")
   
   data %<>%
     group_by(ID, roostgroup) %>%
@@ -522,9 +534,6 @@ rFunction = function(data, travelcut,
   # Log results
   logger.info(paste0("   |> ", sum(data$RULE == "[4] Stationary at roost site", na.rm = T), " locations re-classified as SRoosting"))
 
-  logger.trace(paste0("   ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
-  logger.trace(paste0("   ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
-  logger.trace(paste0("   ", sum(data$behav == "SRoosting", na.rm = T), " locations classified as SRoosting"))
   
   
   
@@ -534,14 +543,14 @@ rFunction = function(data, travelcut,
   #' sequence of non-roosting time-points that remain stationary for an
   #' unusually long period of time
 
-  logger.info(" |- [5] Performing non-roosting stationary cumulative-time classification")
+  logger.info(" [5] Performing non-roosting stationary cumulative-time classification")
   
   #' Derive required columns - check function definition for further details
   data <- data |> add_cmltv_stationary_cols()
   
   #' Re-classify Resting locations assigned with cumulative stationary times
-  #' greater than the individual-based 95th percentile of stationary
-  #' run durations present in the data
+  #' that exceed the 95th percentile of stationary run durations. Percentile
+  #' thresholds are individual-based and calculated from the input data
   data %<>% 
     mutate(
       RULE = ifelse(!is.na(cumtimestat) & cumtimestat > dayRunThresh & behav == "SResting", "[5] Extended stationary behaviour", RULE),
@@ -559,11 +568,11 @@ rFunction = function(data, travelcut,
   
   ## [6] Speed-Time Classification --------------
   
-  #' Remaining Resting locations re-classified if the speed to next location is
-  #' greater the 97.5th percentile of the predicted stationary speeds at that
-  #' time of the day (day-hours)
+  #' Remaining Resting locations re-classified as Feeding if the speed to next
+  #' location is greater the 97.5th percentile of the predicted stationary
+  #' speeds at that time of the day (day-hours)
   
-  logger.info("[6] Performing speed-time classification")
+  logger.info(" [6] Performing speed-time classification")
 
   data %<>% 
     ungroup() %>%
@@ -612,6 +621,14 @@ rFunction = function(data, travelcut,
   
   # Log results
   logger.trace(paste0("   ", sum(data$RULE == "[7] ACC not similar to roosting", na.rm = T), " locations re-classified as SFeeding"))
+  
+  
+  # Summarise classified behaviour 
+  logger.info(" |- Behaviour Classification Summary")
+  logger.info(paste0("   |> ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
+  logger.info(paste0("   |> ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
+  logger.info(paste0("   |> ", sum(data$behav == "SRoosting", na.rm = T), " locations classified as SRoosting"))
+  logger.info(paste0("   |> ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
   
   
   
@@ -752,8 +769,10 @@ acc_var <- function(data, interpolate = FALSE) {
   
 #' derive and add roosting columns to data -----------------------------------------------
 #' New columns relevant for classification:
-#'  - `roostsite`: identifies overnight roosting sites
-#'  - `roostgroup`: identifies groups of locations with roost-like behaviour (consecutive non-travelling locations)
+#'  - `roostsite`: identifies overnight roosting sites (based on overnight 
+#'  traveled distance < 15m)
+#'  - `roostgroup`: identifies groups of locations with roost-like behaviour 
+#'  (consecutive non-travelling locations)
 add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
   
   data %<>% 
