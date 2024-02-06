@@ -283,15 +283,6 @@ rFunction = function(data, travelcut,
   data <- add_roost_cols(data, sunrise_leeway, sunset_leeway)
   
   
-  # ## 6. Cumulative Stationary Time Reassignment
-  # 
-  # logger.info("[6] Preparing cumulative-time-spent-stationary data")
-  # 
-  # # This will be generated in the reclassification step
-  # # as it needs to filter out any roostgroup locations
-  
- 
-  
   ## Stationary Speed Vs day-hours model  --------------------------------------------
   
   logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
@@ -537,41 +528,20 @@ rFunction = function(data, travelcut,
   
   
   
-  #### 5. Cumulative-Time Reclassification -----
-  logger.info("[5] Performing stationary-time classification")
+  ## [5] Non-roosting Stationary Cumulative-time Classification ------------
   
-  # Generate stationary data
-  data %<>%
-    group_by(ID) %>%
-    mutate(
-      stationaryNotRoost = ifelse(stationary == 1 & behav != "SRoosting", 1, 0),
-      stationary_runLts = data.table::rleid(stationaryNotRoost == 1)     # id runs of stationary & non-stationary entries
-    ) %>%
-    group_by(ID, stationary_runLts) %>%
-    mutate(
-      cumtimestat = cumsum(as.numeric(timediff_hrs)), # compute cumulative time (hrs) spent stationary & non-stationary
-      cumtimestat = ifelse(stationaryNotRoost == 0 | cumtimestat < 0, 0, cumtimestat)
-    ) %>%
-    group_by(ID) %>%
-    mutate(
-      # cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
-      cumtimestat_pctl = 1 - ecdf(cumtimestat)(cumtimestat) 
-    )       
+  #' Remaining Resting locations re-classified as Feeding if they are part of a
+  #' sequence of non-roosting time-points that remain stationary for an
+  #' unusually long period of time
+
+  logger.info(" |- [5] Performing non-roosting stationary cumulative-time classification")
   
-  # find the length (in time) of every stationary run
-  eventtimes <- data %>% data.frame() %>%
-    group_by(ID, stationary_runLts) %>%
-    summarise(runtime = suppressWarnings(max(cumtimestat, na.rm = TRUE)),
-              runtime = ifelse(is.infinite(runtime), 0, runtime)) %>%
-    mutate(dayRunThresh = quantile(runtime, probs = 0.95))
+  #' Derive required columns - check function definition for further details
+  data <- data |> add_cmltv_stationary_cols()
   
-# add run time back to main data
-  data %<>% 
-    left_join(., eventtimes, by = c("ID", "stationary_runLts"))
-  
-  
-  # Reasssign SResting => SFeeding
-  # The longest 5 percentiles of runs of stationary behaviours will be reclassified as SFeeding
+  #' Re-classify Resting locations assigned with cumulative stationary times
+  #' greater than the individual-based 95th percentile of stationary
+  #' run durations present in the data
   data %<>% 
     mutate(
       RULE = ifelse(cumtimestat > dayRunThresh & behav == "SResting", "[5] Extended stationary behaviour", RULE),
@@ -582,7 +552,10 @@ rFunction = function(data, travelcut,
     ungroup()
   
   # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[5] Extended stationary behaviour", na.rm = T), " locations re-classified as SFeeding"))
+  logger.trace(paste0("  |> ", sum(data$RULE == "[5] Extended stationary behaviour", na.rm = T), " locations re-classified as SFeeding"))
+  
+  
+  
   
   
   #### 6. Speed-Time Reclassification -----
@@ -864,3 +837,50 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
 
 
 
+#' Derive columns required for the non-roosting stationary cumulative time  -----------------------------------------------
+#' 
+#' Relevant added columns 
+#'  - `cumtimestat`: cumulative time spent, up to each location, in a run of
+#'  non-roosting stationary time-points. 0's attributed to locations that are
+#'  not part of a stationary run#'  
+#'  - `dayRunThresh`: 95th percentile of stationary run durations, per bird  
+add_cmltv_stationary_cols <- function(data){
+  
+  # Generate non-roosting stationary run-length data
+  data %<>%
+    # QUESTION (BC): Shouldn't it be grouped by yearmonthday too? If not, the
+    # same run-length could link locations separated by gaps larger than a day
+    # (e.g. due to lack of GPS signal). Note: yearmonthday would have to be
+    # included in the subsequent group_by steps accordingly
+    group_by(ID) %>%
+    mutate(
+      stationaryNotRoost = ifelse(stationary == 1 & behav %!in% c("SRoosting", "STravelling"), 1, 0),
+      stationary_runLts = data.table::rleid(stationaryNotRoost == 1),     # id runs of stationary & non-stationary entries
+      stationary_runLts = ifelse(stationaryNotRoost == 0, NA, stationary_runLts)
+    ) %>%
+    group_by(ID, stationary_runLts) %>%
+    mutate(
+      cumtimestat = cumsum(as.numeric(timediff_hrs)), # compute cumulative time (hrs) spent stationary & non-stationary
+      cumtimestat = ifelse(stationaryNotRoost == 0 | cumtimestat < 0, 0, cumtimestat)
+    ) %>%
+    group_by(ID) %>%
+    mutate(
+      # cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
+      cumtimestat_pctl = 1 - ecdf(cumtimestat)(cumtimestat) 
+    )
+  
+  
+  # find the duration of every stationary run
+  eventtimes <- data %>% data.frame() %>%
+    group_by(ID, stationary_runLts) %>%
+    summarise(runtime = suppressWarnings(max(cumtimestat, na.rm = TRUE)),
+              runtime = ifelse(is.infinite(runtime), 0, runtime)) %>%
+    # making grouping explicit, for clarity
+    group_by(ID) %>% 
+    mutate(dayRunThresh = quantile(runtime, probs = 0.95))
+  
+  # add run time back to main data
+  data %<>% left_join(., eventtimes, by = c("ID", "stationary_runLts"))
+  
+  data
+}
