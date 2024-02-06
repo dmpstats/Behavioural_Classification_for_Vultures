@@ -557,21 +557,25 @@ rFunction = function(data, travelcut,
   
   
   
+  ## [6] Speed-Time Classification --------------
   
-  #### 6. Speed-Time Reclassification -----
+  #' Remaining Resting locations re-classified if the speed to next location is
+  #' greater the 97.5th percentile of the predicted stationary speeds at that
+  #' time of the day (day-hours)
+  
   logger.info("[6] Performing speed-time classification")
 
   data %<>% 
+    ungroup() %>%
     mutate(
-      RULE = ifelse(kmph > kmphPI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
-      behav = ifelse(kmph > kmphPI97.5 & behav == "SResting", "SFeeding", behav),
-      #RULE = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "[5] Extended stationary behaviour", RULE),
-      #behav = ifelse(cumtimestat_pctl < 0.05 & behav == "SResting", "SFeeding", behav),
-    ) %>%
-    ungroup()
+      RULE = ifelse(!is.na(kmphPI97.5) & kmph > kmphPI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
+      behav = ifelse(!is.na(kmphPI97.5) & kmph > kmphPI97.5 & behav == "SResting", "SFeeding", behav)
+    )
   
   # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[6] Exceed Speed-Time threshold", na.rm = T), " locations re-classified as SFeeding"))
+  logger.trace(paste0("  |> ", sum(data$RULE == "[6] Exceed Speed-Time threshold", na.rm = T), " locations re-classified as SFeeding"))
+  
+  
   
   #### 7. Accelerometer Classification -----
   
