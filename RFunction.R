@@ -48,7 +48,7 @@ rFunction = function(data, travelcut,
   
   
   ## travelcut ----
-  if(travelcut <=  0 | !is.numeric(travelcut)) {
+  if(travelcut <= 0 | !is.numeric(travelcut)) {
     logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
     stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
   }
@@ -238,7 +238,7 @@ rFunction = function(data, travelcut,
   
   
   
-  ## Night-time point identification ----------------------------
+  ## Night-time identification ----------------------------
 
   #' (i) nightpoint == 0 if sunrise_timestamp < timestamp < sunrise_timestamp (+/- leeway), 
   #' (ii) otherwise nightpoint == 1
@@ -408,7 +408,7 @@ rFunction = function(data, travelcut,
   
   
   ## [1] Speed Classification ----
-  logger.info(" [1] Performing speed classification")
+  logger.info("[1] Performing speed classification")
   data %<>% mutate(
     # Add column to explain classification:
     RULE = ifelse(stationary == 1, "[1] Low speed","[1] High speed"), 
@@ -437,7 +437,7 @@ rFunction = function(data, travelcut,
   
   if(alt_classify){
   
-    logger.info(" [2] Performing altitude classification")
+    logger.info("[2] Performing altitude classification")
     
     data %<>%
       # QUESTION (BC): shouldn't this step be grouped by bird given we're using `lead()`?
@@ -461,7 +461,7 @@ rFunction = function(data, travelcut,
     logger.info(paste0("   |> ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))  
   
   } else {
-    logger.warn("|- [2] Skipping altitude classification due to absence of altitude data")
+    logger.warn("[2] Skipping altitude classification due to absence of altitude data")
   }
   
   
@@ -475,7 +475,7 @@ rFunction = function(data, travelcut,
   #' NOTE: STravelling locations are kept unchanged, i.e. night-time travelling 
   #' treated as a valid behaviour
   
-  logger.info(" [3] Performing night-time classification")
+  logger.info("[3] Performing night-time classification")
   
   data %<>%
     mutate(
@@ -520,7 +520,7 @@ rFunction = function(data, travelcut,
   #' NOTE: STravelling locations not affected by this step, even if they were
   #' tagged as part of a roost-site
   
-  logger.info(" [4] Performing roosting-site classification")
+  logger.info("[4] Performing roosting-site classification")
   
   data %<>%
     group_by(ID, roostgroup) %>%
@@ -543,7 +543,7 @@ rFunction = function(data, travelcut,
   #' sequence of non-roosting time-points that remain stationary for an
   #' unusually long period of time
 
-  logger.info(" [5] Performing non-roosting stationary cumulative-time classification")
+  logger.info("[5] Performing non-roosting stationary cumulative-time classification")
   
   #' Derive required columns - check function definition for further details
   data <- data |> add_cmltv_stationary_cols()
@@ -572,7 +572,7 @@ rFunction = function(data, travelcut,
   #' location is greater the 97.5th percentile of the predicted stationary
   #' speeds at that time of the day (day-hours)
   
-  logger.info(" [6] Performing speed-time classification")
+  logger.info("[6] Performing speed-time classification")
 
   data %<>% 
     ungroup() %>%
@@ -594,7 +594,7 @@ rFunction = function(data, travelcut,
   #' active accelerometer axis. Percentile thresholds are calculated for each
   #' individual from input data.
   
-  logger.info(" [7] Performing accelerometer classification")
+  logger.info("[7] Performing accelerometer classification")
   
   if (ACCclassify == TRUE) {
     data %<>% 
@@ -666,7 +666,6 @@ rFunction = function(data, travelcut,
       dev.off()
       
     }
-    
   }
   
   # Generate summary table
@@ -859,7 +858,7 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
     mutate(
       # Generate runs of stationary behaviour before/after final/first location:
       roostgroup = ifelse(cum_trav == 0 | revcum_trav == 0, 1, 0),
-      roostgroup = rleid(roostgroup),
+      roostgroup = data.table::rleid(roostgroup),
       roostgroup = ifelse(cum_trav != 0 & revcum_trav != 0, NA, roostgroup)
     ) 
 }
