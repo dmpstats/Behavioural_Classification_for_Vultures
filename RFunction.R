@@ -628,7 +628,7 @@ rFunction = function(data, travelcut,
   logger.info(paste0("   |> ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
   logger.info(paste0("   |> ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
   logger.info(paste0("   |> ", sum(data$behav == "SRoosting", na.rm = T), " locations classified as SRoosting"))
-  logger.info(paste0("   |> ", sum(data$behav == "SResting", na.rm = T), " locations classified as SResting"))
+  logger.info(paste0("   |> ", sum(data$behav == "SFeeding", na.rm = T), " locations classified as SFeeding"))
   
   
   
