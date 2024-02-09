@@ -2,9 +2,30 @@
   "settings": [
     {
       "id": "travelcut",
-      "name": "Upper speed bound for 'stationary' beahviour",
+      "name": "Upper speed bound for 'stationary' behaviour",
       "description": "Insert the upper speed cutoff (in km/h) for behaviour to be classified as 'stationary'. ",
       "defaultValue": 3,
+      "type": "DOUBLE"
+    },
+    {
+      "id": "sunrise_leeway",
+      "name": "Sunrise leeway (minutes):",
+      "description": "This is the number of minutes before/after sunrise that 'daytime' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunrise; positive numbers move it after).",
+      "defaultValue": 0,
+      "type": "INTEGER"
+    },
+    {
+      "id": "sunset_leeway",
+      "name": "Sunset leeway (minutes):",
+      "description": "This is the number of minutes before/after sunset that 'night-time' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunset; positive numbers move it after).",
+      "defaultValue": 0,
+      "type": "INTEGER"
+    },
+    {
+      "id": "altbound",
+      "name": "Altitude change threshold (metres):",
+      "description": "This is the absolute change in altitude between consecutive locations beyond which a bird is considered as ascending/descending. For example, setting this to 25 means that the bird is ascending when its change in altitude is above 25m, and descending when below -25m. This setting is only used if column `altitude` is present in the input data.",
+      "defaultValue": 25,
       "type": "DOUBLE"
     },
     {
@@ -13,27 +34,6 @@
       "description": "Check this to generate, as artefacts, simple location plots of each bird's behaviourally-classified movements",
       "defaultValue": false,
       "type": "CHECKBOX"
-    },
-    {
-      "id": "sunrise_leeway",
-      "name": "Sunrise leeway (minutes):",
-      "description": "This is the number of minutes before/after sunrise that 'daytime' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunrise; positive numbers move it after.) NOTE: requires 'Use provided sunrise-sunset hours' to be TRUE.",
-      "defaultValue": 0,
-      "type": "INTEGER"
-    },
-    {
-      "id": "sunset_leeway",
-      "name": "Sunset leeway (minutes):",
-      "description": "This is the number of minutes before/after sunset that 'night-time' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunset; positive numbers move it after.) NOTE: requires 'Use provided sunrise-sunset hours' to be TRUE.",
-      "defaultValue": 0,
-      "type": "INTEGER"
-    },
-    {
-      "id": "altbound",
-      "name": "Altitude change threshold (metres):",
-      "description": "This is the absolute change in altitude which beyond a bird is classified as ascending/descending. For example, setting this to 25 means that the bird is ascending when its change in altitude is above 25m, and descending when below -25m.",
-      "defaultValue": 25,
-      "type": "DOUBLE"
     },
     {
       "id": "keepAllCols",
@@ -71,6 +71,21 @@
       },
       {
         "name": "stringr"
+      },
+      {
+        "name": "tidyr"
+      },
+      {
+        "name": "spatstat.utils"
+      },
+      {
+        "name": "purrr"
+      },
+      {
+        "name": "zoo"
+      },
+      {
+        "name": "MRSea"
       }
     ]
   },
@@ -138,7 +153,7 @@
         "creator"
       ],
       "orcid": null,
-      "affiliation": "DMP Stats",
+      "affiliation": "DMP Statistical Solutions",
       "affiliationRor": null
     }
   ],
@@ -146,13 +161,17 @@
     {
       "name": "University of St Andrews",
       "comment": null
+    },
+    {
+      "name": "North Carolina Zoo, US",
+      "comment": null
     }
   ],
   "references": [
 
   ],
   "documentation": {
-    "url": "https://github.com/callumjclarke/Behavioural_Classification_for_Vultures/README.md"
+     "url": "https://github.com/dmpstats/Behavioural_Classification_for_Vultures/blob/master/README.md"
   }
 }
 
