@@ -93,12 +93,16 @@ rFunction = function(data, travelcut,
   
   
   if ("timestamp_local" %!in% colnames(data)) {
-    logger.warn(
+    stop(
       paste0(
-        " |- `timestamp_local` is not a column within the data. Classification process ", 
-        "may be flawed if timezones of time-related columns are inconsistent. ",
-        "Please use 'Add Local and Solar Time' MoveApp to generate this column.")
+        "Column `timestamp_local` is not comprised in input data. Local time is ",
+        "a fundamental requirement for the classification process. Please deploy ",
+        "the App 'Add Local and Solar Time' earlier in the Workflow to bind local ",
+        "time to the input dataset."),
+      call. = FALSE
     )
+  }else{
+    logger.info(" |- Local Time column identified")
   }
   
   
@@ -106,10 +110,11 @@ rFunction = function(data, travelcut,
     logger.fatal("`sunrise_timestamp` or `sunset timestamp` is not a column in the input data. Sunrise-sunset classification cannot be performed. Terminating - please use the 'Add Local and Solar Time' MoveApp in this workflow BEFORE this MoveApp")
     stop(
       paste0(
-        "Either `sunrise_timestamp` or `sunset timestamp` is not a column in the ",
+        "`sunrise_timestamp` and/or `sunset timestamp` are not a columns in the ",
         "input data. Identification of night-time points is fundamental for the ",
-        "classification process. Please use the 'Add Local and Solar Time' MoveApp in ",
-        "the workflow BEFORE this MoveApp to add the sought columns.")
+        "classification process. Please deploy the App 'Add Local and Solar Time' ",
+        "earlier in the workflow to add the required columns."), 
+      call. = FALSE
     )
   } else {
     logger.info(" |- Sunrise and sunset columns identified. Able to perform night-time identification.")
@@ -134,34 +139,22 @@ rFunction = function(data, travelcut,
     timestamp = mt_time(.)
   )
   
-  #' NOTE: `yearmonthday`, `hourmin`, `timediff_hrs`, `dist_m` & `kmph`
+  # Add date label and day-hours (i.e. decimal hours since start of day)
+  data %<>% 
+    mutate(
+      yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""),
+      hourmin = lubridate::hour(timestamp_local) + 
+        lubridate::minute(timestamp_local)/60 + 
+        lubridate::second(timestamp_local)/3600
+    ) 
+  
+  
+  #' NOTE:`timediff_hrs` & `kmph`
   #' variables are expected to provide information between consecutive
   #' locations. If the Standardizing App (or other) has been used earlier in the
   #' WF, these cols could already be present in the input. However, there is no
   #' guarantee that input has been thinned by other in-between App. Therefore, to
   #' ensure accuracy, we always (re)generate these columns here.
-  
-  # Add date label and day-hours (i.e. decimal hours since start of day)
-  # QUESTION (BC): Should we restrict usage to input with local_time only? I think we should
-  if ("timestamp_local" %in% colnames(data)) {
-    data %<>% 
-      mutate(
-        yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""),
-        hourmin = lubridate::hour(timestamp_local) + 
-          lubridate::minute(timestamp_local)/60 + 
-          lubridate::second(timestamp_local)/3600
-      ) 
-  } else {
-    data %<>% 
-      mutate(
-        yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp, 1, 10), "-", ""),
-        hourmin = lubridate::hour(timestamp) + 
-          lubridate::minute(timestamp)/60 + 
-          lubridate::second(timestamp)/3600
-      )                     
-  }
-  
-  # Add time gap, distance and speed cols
   data %<>% 
     arrange(mt_track_id(data), mt_time(data)) %>%
     # distinct(timestamp, .keep_all = TRUE) %>%
