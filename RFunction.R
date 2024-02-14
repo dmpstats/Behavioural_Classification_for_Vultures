@@ -12,6 +12,9 @@ library('MRSea')
 library("purrr")
 library("zoo")
 library("spatstat.utils")
+library("furrr")
+library("future")
+library("progressr")
 
 `%!in%` <- Negate(`%in%`)
 not_null <- Negate(is.null)
@@ -19,7 +22,8 @@ not_null <- Negate(is.null)
 
 # Main RFunction -------------------------------------------------------------------------------------
 
-rFunction = function(data, travelcut,
+rFunction = function(data, 
+                     travelcut,
                      create_plots = TRUE,
                      sunrise_leeway = 0,
                      sunset_leeway = 0,
@@ -160,7 +164,6 @@ rFunction = function(data, travelcut,
     # distinct(timestamp, .keep_all = TRUE) %>%
     mutate(
       timediff_hrs = as.vector(mt_time_lags(., units = "hours")),
-      dist_m = as.vector(mt_distance(., units = "m")),
       kmph = as.vector(mt_speed(., units = "km/h"))
     ) 
   
@@ -292,110 +295,37 @@ rFunction = function(data, travelcut,
   
   logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
   
-  # *** move this section to the standardising app???** ##
-  # Probably more efficient ways to do this #
+  progressr::handlers("cli")
   
-  data <- data |> 
-    group_by(ID) |>
-    dplyr::group_split() |> 
-    purrr::map(\(dt){
-      
-      id <- unique(dt$ID)
-      
-      logger.info(paste0("  |> Fitting model for subject ", id, " @ ", lubridate::now()))
-      
-      newdat <- dt %>%
-        mutate(month = month(timestamp),
-               response = kmph + 0.00001) %>%
-        filter(!is.na(response), 
-               response < travelcut,
-               timestamp > (max(timestamp) - days(30))) 
-      
-      # ** add if statement or similar to ensure that if not enough data, 
-      # this modelling is not done (e.g. need 10 days??) ** #
-      # ALSO what happens if more than 30 days data provided??
-      #
-      # NOTE: Predicting to full dataset (we'll ignore the travelling points in the classification later)
-      
-      initialModel <- glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
-      
-      salsa1dlist <- list(fitnessMeasure = 'BIC', 
-                          minKnots_1d = c(1), 
-                          maxKnots_1d = c(5), 
-                          startKnots_1d = c(1), 
-                          degree = c(2), 
-                          maxIterations = 10,
-                          gaps = c(0))
-      
-      # run SALSA
-      fit <- tryCatch(
-        
-        runSALSA1D(
-          initialModel, 
-          salsa1dlist, 
-          varlist=c("hourmin"), 
-          splineParams=NULL, 
-          datain=newdat, 
-          predictionData = filter(dt, !is.na(kmph)),
-          panelid = newdat$yearmonthday, 
-          suppress.printout = TRUE)$bestModel,
-        
-        error = \(cnd){
-          logger.warn(
-            paste0(
-              "    |x Ouch!! Something went wrong while fitting the model for subject ", id, ".\n",
-              "           |x `runSALSA1D()` returned the following error message:\n",
-              "           |x \"", conditionMessage(cnd), "\"\n", 
-              "           |x Speed thresholds WON'T be considered in the behaviour classification of subject ", id, "."
-            ))
-          
-          return(NULL)
-        }
-      )
-      
-      if(!is_null(fit)){
-        
-        dt$kmphpreds <- predict(object = fit, newdata = dt)
-        
-        boots <- do.bootstrap.cress.robust(
-          model.obj = fit, 
-          predictionGrid = dt, 
-          B = 1000, robust = TRUE, 
-          cat.message = FALSE)
-        
-        cis <- makeBootCIs(boots)
-        
-        # -- Construct prediction intervals
-        d = summary(fit)$dispersion
-        predint <- apply(boots, 2, function(x){rgamma(n = length(x), shape = 1/d, scale= x*d)})
-        pis <- t(apply(predint, 1, FUN = quantile,probs = c(0.025, 0.975)))
-        
-        dt <- dt %>% 
-          mutate("kmphCI2.5" = cis[,1],
-                 "kmphCI97.5" = cis[,2],
-                 "kmphPI2.5" = pis[,1], 
-                 "kmphPI97.5" = pis[,2]) 
-        
-        # ultimately probably only need to keep last column (kmphPI97.5)  
-      } else{
-        
-        dt <- dt |> 
-          mutate(
-            kmphpreds = NA,
-            `kmphCI2.5` = NA,
-            `kmphCI97.5` = NA,
-            `kmphPI2.5` = NA, 
-            `kmphPI97.5` = NA
-          )
-      }
-      return(dt)
-    }) |> 
-    mt_stack()
+  #' setting parallel processing using availableCores() to set # workers.
+  #' {future} imports that function from {parallelly}, which  is safe to use in
+  #' container environments (e.g. Docker)
+  future::plan("multisession", workers = future::availableCores(omit = 1))
+  
+  progressr::with_progress({
+    
+    # initiate progress signaler
+    p <- progressr::progressor(steps = mt_n_tracks(data))
+    
+    data <- data |> 
+      group_by(ID) |>
+      dplyr::group_split() |> 
+      furrr::future_map(
+        .f = speed_time_model, travelcut = travelcut, p = p,
+        .options = furrr_options(
+          seed = TRUE,
+          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate")
+        )
+      ) |>
+      mt_stack()
+    
+  })
   
   
+  future::plan("sequential")
   
   
-  # Bahaviour Classification Steps [1 -7] ========================================================
+  # Behaviour Classification Steps [1 -7] ========================================================
   
   logger.info("All data prepared. Performing all classification steps")
   
@@ -570,8 +500,8 @@ rFunction = function(data, travelcut,
   data %<>% 
     ungroup() %>%
     mutate(
-      RULE = ifelse(!is.na(kmphPI97.5) & kmph > kmphPI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
-      behav = ifelse(!is.na(kmphPI97.5) & kmph > kmphPI97.5 & behav == "SResting", "SFeeding", behav)
+      RULE = ifelse(!is.na(kmphCI97.5) & kmph > kmphCI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
+      behav = ifelse(!is.na(kmphCI97.5) & kmph > kmphCI97.5 & behav == "SResting", "SFeeding", behav)
     )
   
   # Log results
@@ -905,3 +835,117 @@ add_cmltv_stationary_cols <- function(data){
   
   data
 }
+
+
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////
+speed_time_model <- function(dt, travelcut, p){
+  
+  id <- unique(dt$ID)
+  
+  logger.info(paste0("  |> Fitting model for track ", id, " @ ", lubridate::now()))
+  
+  newdat <- dt %>%
+    dplyr::mutate(
+      month = month(timestamp),
+      response = kmph + 0.00001
+    ) %>%
+    dplyr::filter(
+      !is.na(response),
+      response < travelcut,
+      timestamp > (max(timestamp) - days(30))
+    )
+  
+  # ** add if statement or similar to ensure that if not enough data,
+  # this modelling is not done (e.g. need 10 days??) ** #
+  # ALSO what happens if more than 30 days data provided??
+  #
+  # NOTE: Predicting to full dataset (we'll ignore the travelling points in the classification later)
+  
+  initialModel <- glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
+  
+  salsa1dlist <- list(fitnessMeasure = 'BIC',
+                      minKnots_1d = c(1),
+                      maxKnots_1d = c(5),
+                      startKnots_1d = c(1),
+                      degree = c(2),
+                      maxIterations = 10,
+                      gaps = c(0))
+  
+  # run SALSA
+  fit <- tryCatch(
+    
+    suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
+      
+      runSALSA1D(
+        initialModel,
+        salsa1dlist,
+        varlist=c("hourmin"),
+        splineParams=NULL,
+        datain=newdat,
+        predictionData = filter(dt, !is.na(kmph)),
+        panelid = newdat$yearmonthday,
+        suppress.printout = TRUE)$bestModel
+    ),
+    
+    error = \(cnd){
+      # needed to handle apparent unclosed connection in some error cases of runSALSA1D
+      sink()
+      
+      logger.warn(
+        paste0(
+          "    |x Ouch!! Something went wrong while fitting the model for subject ", id, ".\n",
+          "           |x `runSALSA1D()` returned the following error message:\n",
+          "           |x \"", conditionMessage(cnd), "\"\n",
+          "           |x Speed thresholds WON'T be considered in the behaviour classification of subject ", id, "."
+        ))
+      
+      return(NULL)
+    }
+  )
+  
+  if(!is_null(fit)){
+    
+    dt$kmphpreds <- predict(object = fit, newdata = dt)
+    
+    
+    boots <- suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
+      MRSea::do.bootstrap.cress.robust(
+        model.obj = fit,
+        predictionGrid = dt,
+        B = 1000, robust = TRUE,
+        cat.message = FALSE)
+    )
+    
+    cis <- MRSea::makeBootCIs(boots)
+    
+    # # -- Construct prediction intervals
+    # d = summary(fit)$dispersion
+    # predint <- apply(boots, 2, function(x){rgamma(n = length(x), shape = 1/d, scale= x*d)})
+    # pis <- t(apply(predint, 1, FUN = quantile,probs = c(0.025, 0.975)))
+    
+    dt <- dt %>%
+      mutate("kmphCI2.5" = cis[,1],
+             "kmphCI97.5" = cis[,2],
+             #"kmphPI2.5" = pis[,1],
+             #"kmphPI97.5" = pis[,2]
+      )
+    
+    # ultimately probably only need to keep last column (kmphPI97.5)
+  } else{
+    
+    dt <- dt |>
+      mutate(
+        kmphpreds = NA,
+        `kmphCI2.5` = NA,
+        `kmphCI97.5` = NA,
+        #`kmphPI2.5` = NA,
+        #`kmphPI97.5` = NA
+      )
+  }
+  
+  p()
+  
+  return(dt)
+}
+
