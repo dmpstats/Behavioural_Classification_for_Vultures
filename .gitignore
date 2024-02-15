@@ -20,3 +20,15 @@ plot_ACC.R
 .env
 salsa1d.log
 .env
+data/raw/asavannah-meft_processed_acc_merged.rds
+data/raw/gaia_processed_acc_merged.rds
+data/raw/gaia_processed_acc_merged_30days.rds
+data/raw/kendal_Tanzania_processed_acc_merged.rds
+data/raw/nam_sop_processed_acc_merged.rds
+data/raw/nam_sop_processed_acc_merged_30days.rds
+data/raw/pan-africa_vultures_processed.rds
+data/raw/SA_VfA_MPIAB_processed_acc_merged.rds
+data/raw/wcs_Ruaha-Katavi_processed.rds
+data/raw/WhitebackedVulturesZambiaKendall_processed.rds
+dev/gather_and_encrypt_test_datasets.r
+.behavsummary.csv
