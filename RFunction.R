@@ -20,7 +20,7 @@ library("progressr")
 not_null <- Negate(is.null)
 
 
-# Main RFunction -------------------------------------------------------------------------------------
+# Main RFunction ====================================================================
 
 rFunction = function(data, 
                      travelcut,
@@ -280,7 +280,7 @@ rFunction = function(data,
     ACCclassify <- FALSE
   }  
   
-  if(!ACCclassify) logger.info("  |- No accelerometer data detected: skipping ACC preparation.")
+  if(!ACCclassify) logger.info("  |- No accelerometer data detected in any of the tracks: skipping ACC preparation.")
   
   
   
@@ -330,7 +330,8 @@ rFunction = function(data,
   logger.info("All data prepared. Performing all classification steps")
   
   
-  ## [1] Speed Classification ----
+  ## [1] Speed Classification -------------------
+  
   logger.info("[1] Performing speed classification")
   data %<>% mutate(
     # Add column to explain classification:
@@ -343,7 +344,7 @@ rFunction = function(data,
   logger.info(paste0("   |> ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
   
   
-  ## [2] Altitude Classification ----
+  ## [2] Altitude Classification --------------------
   
   #' Remaining resting locations reclassified as travelling according to the following rules:
   #' (i) If a bird is ascending ==> STravelling
@@ -390,7 +391,7 @@ rFunction = function(data,
   
   
   
-  ## [3] Night-time Classification -----
+  ## [3] Night-time Classification ---------------
   
   #' Remaining resting locations re-classified as (night-time) roosting if they've 
   #' been identified as a night point (i.e. occurred between sunset and sunrise)
@@ -433,8 +434,8 @@ rFunction = function(data,
 
   ## [4] Roosting-site Classification -------------
   
-  #' Remaining resting locations re-classified as roosting if identified as part
-  #' of a roosting-site, which is defined as: 
+  #' Remaining (daytime) resting locations re-classified as roosting if
+  #' identified as part of a roosting-site, which is defined as:
   #' 
   #' Consecutive stationary locations (`roostgroup`) encompassing night-time
   #' locations with total overnight distance traveled less than 15 meters
@@ -517,9 +518,10 @@ rFunction = function(data,
   #' active accelerometer axis. Percentile thresholds are calculated for each
   #' individual from input data.
   
-  logger.info("[7] Performing accelerometer classification")
-  
   if (ACCclassify == TRUE) {
+    
+    logger.info("[7] Performing accelerometer classification")
+    
     data %<>% 
       left_join(roostpoints, by = "ID") %>%
       mutate(
@@ -540,10 +542,14 @@ rFunction = function(data,
       ) %>%
       # Move these attributes to track data:
       mt_as_track_attribute(c("thresx", "thresy", "thresz"))
+    
+    # Log results
+    logger.trace(paste0("   ", sum(data$RULE == "[7] ACC not similar to roosting", na.rm = T), " locations re-classified as SFeeding"))
+    
+  }else{
+    logger.warn("[7] Skipping accelerometer classification due to absence of ACC data in all tracks.")
   }
   
-  # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[7] ACC not similar to roosting", na.rm = T), " locations re-classified as SFeeding"))
   
   
   # Summarise classified behaviour 
@@ -621,10 +627,12 @@ rFunction = function(data,
 }
 
 
-# //////////////////////////////////////////////////////////////////////////////
-# Helper Functions ------
 
-#' Compute acceleration variance till next location ---------------------------
+# Helper Functions ====================================================================
+
+#' //////////////////////////////////////////////////////////////////////////////
+#' Compute acceleration variance till next location
+#' 
 acc_var <- function(data, interpolate = FALSE) {
   
   # Store track data for later recall
@@ -688,13 +696,16 @@ acc_var <- function(data, interpolate = FALSE) {
 }
 
   
-  
-#' derive and add roosting columns to data -----------------------------------------------
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////  
+#' Derive and add roosting columns to data 
+#' 
 #' New columns relevant for classification:
 #'  - `roostsite`: identifies overnight roosting sites (based on overnight 
 #'  traveled distance < 15m)
 #'  - `roostgroup`: identifies groups of locations with roost-like behaviour 
 #'  (consecutive non-travelling locations)
+#'  
 add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
   
   data %<>% 
@@ -788,7 +799,8 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
 
 
 
-#' Derive columns required for the non-roosting stationary cumulative time  -----------------------------------------------
+#' /////////////////////////////////////////////////////////////////////////////////////////////  
+#' Derive columns required for the non-roosting stationary cumulative time  
 #' 
 #' Relevant added columns 
 #'  - `cumtimestat`: cumulative time spent, up to each location, in a run of
