@@ -283,40 +283,6 @@ rFunction = function(data,
   if(!ACCclassify) logger.info("  |- No accelerometer data detected in any of the tracks: skipping ACC preparation.")
   
   
-  ## Stationary Speed Vs day-hours model  --------------------------------------------
-  
-  logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
-  
-  progressr::handlers("cli")
-  
-  #' setting parallel processing using availableCores() to set # workers.
-  #' {future} imports that function from {parallelly}, which  is safe to use in
-  #' container environments (e.g. Docker)
-  future::plan("multisession", workers = future::availableCores(omit = 1))
-  
-  progressr::with_progress({
-    
-    # initiate progress signaler
-    p <- progressr::progressor(steps = mt_n_tracks(data))
-    
-    data <- data |> 
-      group_by(ID) |>
-      dplyr::group_split() |> 
-      furrr::future_map(
-        .f = speed_time_model, travelcut = travelcut, p = p,
-        .options = furrr_options(
-          seed = TRUE,
-          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate")
-        )
-      ) |>
-      mt_stack()
-    
-  })
-  
-  
-  future::plan("sequential")
-  
-  
   # Behaviour Classification Steps [1 -7] ========================================================
   
   logger.info("All data prepared. Performing all classification steps")
@@ -493,12 +459,47 @@ rFunction = function(data,
   #' speeds at that time of the day (day-hours)
   
   logger.info("[6] Performing speed-time classification")
-
+  
+  #### [6.1] Fit Stationary Speed Vs day-hours model  ----------------
+  logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
+  
+  progressr::handlers("cli")
+  
+  #' setting parallel processing using availableCores() to set # workers.
+  #' {future} imports that function from {parallelly}, which  is safe to use in
+  #' container environments (e.g. Docker)
+  future::plan("multisession", workers = future::availableCores(omit = 2))
+  
+  progressr::with_progress({
+    
+    # initiate progress signaler
+    p <- progressr::progressor(steps = mt_n_tracks(data))
+    
+    data <- data |> 
+      group_by(ID) |>
+      dplyr::group_split() |>
+      furrr::future_map(
+        .f = speed_time_model, p = p,
+        .options = furrr_options(
+          seed = TRUE,
+          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate")
+        )
+      ) |>
+      mt_stack()
+    
+  })
+  
+  future::plan("sequential")
+  
+  
+  #### [6.2] Apply speed-time rule  ----------------
+  logger.info(" |- Apply speed-time rule")
+  
   data %<>% 
     ungroup() %>%
     mutate(
-      RULE = ifelse(!is.na(kmphCI97.5) & kmph > kmphCI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
-      behav = ifelse(!is.na(kmphCI97.5) & kmph > kmphCI97.5 & behav == "SResting", "SFeeding", behav)
+      RULE = ifelse(!is.na(kmphCI97.5) & !is.na(kmph) & kmph > kmphCI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
+      behav = ifelse(!is.na(kmphCI97.5) & !is.na(kmph) & kmph > kmphCI97.5 & behav == "SResting", "SFeeding", behav)
     )
   
   # Log results
@@ -803,7 +804,7 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
 #'  non-roosting stationary time-points. 0's attributed to locations that are
 #'  not part of a stationary run#'  
 #'  - `dayRunThresh`: 95th percentile of stationary run durations, per bird  
-add_cmltv_stationary_cols <- function(data){
+add_nonroost_stationary_cols <- function(data){
   
   # Generate non-roosting stationary run-length data
   data %<>%
@@ -813,7 +814,7 @@ add_cmltv_stationary_cols <- function(data){
     # included in the subsequent group_by steps accordingly
     group_by(ID) %>%
     mutate(
-      stationaryNotRoost = ifelse(stationary == 1 & behav %!in% c("SRoosting", "STravelling"), 1, 0),
+      stationaryNotRoost = ifelse(stationary == 1 & behav %!in% c("SRoosting"), 1, 0),
       stationary_runLts = data.table::rleid(stationaryNotRoost == 1),     # id runs of stationary & non-stationary entries
       stationary_runLts = ifelse(stationaryNotRoost == 0, NA, stationary_runLts)
     ) %>%
@@ -847,11 +848,11 @@ add_cmltv_stationary_cols <- function(data){
 
 
 #' /////////////////////////////////////////////////////////////////////////////////////////////
-speed_time_model <- function(dt, travelcut, p){
+speed_time_model <- function(dt, p){
   
   id <- unique(dt$ID)
   
-  logger.info(paste0("  |> Fitting model for track ", id, " @ ", lubridate::now()))
+  logger.info(paste0("   |> Fitting model for track ", id, " @ ", lubridate::now()))
   
   newdat <- dt %>%
     dplyr::mutate(
@@ -860,7 +861,7 @@ speed_time_model <- function(dt, travelcut, p){
     ) %>%
     dplyr::filter(
       !is.na(response),
-      response < travelcut,
+      stationary == 1,
       timestamp > (max(timestamp) - days(30))
     )
   
