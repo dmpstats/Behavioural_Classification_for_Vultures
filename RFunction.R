@@ -352,12 +352,6 @@ rFunction = function(data,
   #'      Next location is ascending/descending ==> STravelling
   #'      Next location is flatlining ==> remains SResting
   #' (iii) If a bird is flatlining, it remains SResting
-  #' 
-  #' NOTE: stationary locations are not re-classified here, so this step can
-  #' produce locations with both `stationary == 1` AND `behav == STravelling`.
-  #' This can be a bit counter-intuitive, but we don't want to change it,
-  #' otherwise the roosting-site identification performed in Data Prep would be
-  #' outdated
   
   if(alt_classify){
   
@@ -376,10 +370,11 @@ rFunction = function(data,
           (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
           (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
           TRUE ~ behav
-        ),
-        # # QUESTION (BC): Change stationary state to conform with above resting -> travelling re-classification??
-        # stationary = ifelse(behav == "STravelling", 0, stationary)
+        )
       )
+    
+    #### <!> Update stationary status -------------
+    data <- data |> mutate(stationary = ifelse(behav == "STravelling", 0, stationary))
     
     # Log results
     logger.info(paste0("   |> ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))  
