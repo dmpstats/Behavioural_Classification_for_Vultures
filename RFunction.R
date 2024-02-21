@@ -51,15 +51,15 @@ rFunction = function(data,
     return(data)}
   
   
-  ## travelcut ----
+  ### travelcut ----
   if(travelcut <= 0 | !is.numeric(travelcut)) {
     logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
     stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
   }
   
   
-  ## altbound ----
-  ## (only if column named "altitude" is in input dataset)
+  ### altbound ----
+  ### (only if column named "altitude" is in input dataset)
   
   if("altitude" %in% colnames(data)){
     
@@ -77,7 +77,7 @@ rFunction = function(data,
     }  
   } 
   
-  ## 'leeway' inputs ----
+  ### 'leeway' inputs ----
   if(is.null(sunrise_leeway)) {
     logger.warn(" |- No sunrise leeway provided as input. Defaulting to no leeway.")
     sunrise_leeway <- 0
@@ -88,7 +88,7 @@ rFunction = function(data,
   }
   
   
-  ## Input data: time-related columns -----
+  ### Input data: time-related columns -----
   if("altitude" %!in% colnames(data)){
     logger.warn(" |- Column `altitude` is absent from input data.")
   } else{
@@ -129,12 +129,12 @@ rFunction = function(data,
   logger.info(" |- Input is in correct format. Proceeding with data preparation.")
   
   
-  # Data Preparation ===========================================================
+  ## Data Preparation ===========================================================
   
   logger.info("Initiate Data Preparation Steps")
   
   
-  ## Generate overarching variables  ------------------------------
+  ### Generate overarching variables  ------------------------------
 
   logger.info(" |- Generate overarching variables")
   
@@ -153,22 +153,23 @@ rFunction = function(data,
     ) 
   
   
-  #' NOTE:`timediff_hrs` & `kmph`
-  #' variables are expected to provide information between consecutive
-  #' locations. If the Standardizing App (or other) has been used earlier in the
-  #' WF, these cols could already be present in the input. However, there is no
-  #' guarantee that input has been thinned by other in-between App. Therefore, to
-  #' ensure accuracy, we always (re)generate these columns here.
+  #' NOTE:`timediff_hrs`, `dist_m` & `kmph` are variables expected to provide
+  #' information between consecutive locations. If the Standardizing App (or
+  #' other) has been used earlier in the WF, these cols could already be present
+  #' in the input. However, there is no guarantee that data coming as input has
+  #' been thinned by other in-between App. Therefore, to ensure accuracy, we
+  #' always (re)generate these columns here.
   data %<>% 
     arrange(mt_track_id(data), mt_time(data)) %>%
     # distinct(timestamp, .keep_all = TRUE) %>%
     mutate(
       timediff_hrs = as.vector(mt_time_lags(., units = "hours")),
       kmph = as.vector(mt_speed(., units = "km/h"))
+      dist_m = as.vector(mt_distance(., units = "m"))
     ) 
   
 
-  ## Identify stationary points -----------------------------------
+  ### Identify stationary points -----------------------------------
   
   logger.info(" |- Identify stationary points")
   
@@ -188,7 +189,7 @@ rFunction = function(data,
   
   
   
-  ## Detect Altitude Changes -------------------------------------
+  ### Detect Altitude Changes -------------------------------------
   
   #' Categorize vertical movement based on altitude change
   #'  (i) change in altitude to next location > threshold: altchange == "ascent"
@@ -234,7 +235,7 @@ rFunction = function(data,
   
   
   
-  ## Night-time identification ----------------------------
+  ### Night-time identification ----------------------------
 
   #' (i) nightpoint == 0 if sunrise_timestamp < timestamp < sunrise_timestamp (+/- leeway), 
   #' (ii) otherwise nightpoint == 1
@@ -253,7 +254,7 @@ rFunction = function(data,
   
   
   
-  ## Calculate ACC variance ----------------------------
+  ### Calculate ACC variance ----------------------------
   
   #' If ACC data is available, calculate variance in acceleration bursts
   #' till subsequent location event - expect one variance statistic for each enabled ACC axes
@@ -280,15 +281,17 @@ rFunction = function(data,
     ACCclassify <- FALSE
   }  
   
-  if(!ACCclassify) logger.info("  |- No accelerometer data detected in any of the tracks: skipping ACC preparation.")
+  if(!ACCclassify) logger.info(" |- No accelerometer data detected in any of the tracks: skipping ACC preparation.")
   
+
   
   # Behaviour Classification Steps [1 -7] ========================================================
   
   logger.info("All data prepared. Performing all classification steps")
   
   
-  ## [1] Speed Classification -------------------
+  
+  ### [1] Speed Classification -------------------
   
   logger.info("[1] Performing speed classification")
   data %<>% mutate(
@@ -302,7 +305,9 @@ rFunction = function(data,
   logger.info(paste0("   |> ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
   
   
-  ## [2] Altitude Classification --------------------
+  
+  
+  ### [2] Altitude Classification --------------------
   
   #' Remaining resting locations reclassified as travelling according to the following rules:
   #' (i) If a bird is ascending ==> STravelling
@@ -344,7 +349,7 @@ rFunction = function(data,
   
   
   
-  ## [3] Night-time Classification ---------------
+  ### [3] Night-time Classification ---------------
   
   #' Remaining resting locations re-classified as (night-time) roosting if they've 
   #' been identified as a night point (i.e. occurred between sunset and sunrise)
@@ -370,7 +375,7 @@ rFunction = function(data,
   
   
   
-  ## [*] Estimate ACC thresholds at night-time roosting locations -----
+  #### <!> Estimate ACC thresholds at night-time roosting locations -----
   if (ACCclassify == TRUE) {
     roostpoints <- data %>%
       filter(behav == "SRoosting") %>%
@@ -384,8 +389,11 @@ rFunction = function(data,
   }
   
   
-
-  ## [4] Roosting-site Classification -------------
+  
+  
+  ### [4] Roosting-site Classification -------------
+  
+  logger.info("[4] Performing roosting-site classification")
   
   #' Remaining (daytime) resting locations re-classified as roosting if
   #' identified as part of a roosting-site, which is defined as:
@@ -397,7 +405,6 @@ rFunction = function(data,
   #' NOTE: STravelling locations not affected by this step, even if they were
   #' tagged as part of a roost-site
   
-  logger.info("[4] Performing roosting-site classification")
   
   #### [4.1] Identify overnight roosting sites ------
   logger.info(" |- Deriving overnight roosting sites.")
@@ -423,16 +430,18 @@ rFunction = function(data,
   
   
   
-  ## [5] Non-roosting Stationary Cumulative-time Classification ------------
+  ### [5] Non-roosting Stationary Cumulative-time Classification ------------
   
   #' Remaining Resting locations re-classified as Feeding if they are part of a
   #' sequence of non-roosting time-points that remain stationary for an
   #' unusually long period of time
-
+   
   logger.info("[5] Performing non-roosting stationary cumulative-time classification")
   
-  #' Derive required columns - check function definition for further details
-  data <- data |> add_cmltv_stationary_cols()
+  #### [5.1] Derive non-roosting stationary runs  -----
+  data <- add_nonroost_stationary_cols(data)
+  
+  #### [5.2] Apply non-roosting stationary Rule  --------- 
   
   #' Re-classify Resting locations assigned with cumulative stationary times
   #' that exceed the 95th percentile of stationary run durations. Percentile
@@ -452,7 +461,7 @@ rFunction = function(data,
   
   
   
-  ## [6] Speed-Time Classification --------------
+  ### [6] Speed-Time Classification --------------
   
   #' Remaining Resting locations re-classified as Feeding if the speed to next
   #' location is greater the 97.5th percentile of the predicted stationary
@@ -507,7 +516,7 @@ rFunction = function(data,
   
   
   
-  ## [7] Accelerometer Classification -----
+  ### [7] Accelerometer Classification -----
   
   #' Remaining Resting locations re-classified as Feeding if the variance in
   #' acceleration to the next location exceeds the 95th percentile of
@@ -558,7 +567,7 @@ rFunction = function(data,
   
   
   
-  # Create plots, if selected ------------------------------------------------------
+  ## Create plots, if selected ------------------------------------------------------
   
   logger.info("Classification complete. Generating output plots")
   if(create_plots == TRUE) {
@@ -598,7 +607,8 @@ rFunction = function(data,
   behavsummary <- table(mt_track_id(data), data$behav)
   write.csv(behavsummary, file = appArtifactPath("behavsummary.csv"))
   
-  # Remove nonessential behavioural columns
+  
+  ## Remove nonessential behavioural columns -----------------------------------
   if (keepAllCols == FALSE) {
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
@@ -613,7 +623,7 @@ rFunction = function(data,
     logger.trace("Removing select nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "stationaryNotRoost", "cumtimestat", "kmphCI2.5", "kmphPI2.5", "kmphpreds"
+        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "stationaryNotRoost", "cumtimestat", "kmphPI2.5",
       ) 
     ))
   }
@@ -833,9 +843,11 @@ add_nonroost_stationary_cols <- function(data){
   # find the duration of every stationary run
   eventtimes <- data %>% data.frame() %>%
     group_by(ID, stationary_runLts) %>%
-    summarise(runtime = suppressWarnings(max(cumtimestat, na.rm = TRUE)),
-              runtime = ifelse(is.infinite(runtime), 0, runtime)) %>%
-    # making grouping explicit, for clarity
+    summarise(
+      runtime = suppressWarnings(max(cumtimestat, na.rm = TRUE)),
+      runtime = ifelse(is.infinite(runtime), 0, runtime), 
+      .groups = "drop"
+    ) %>%
     group_by(ID) %>% 
     mutate(dayRunThresh = quantile(runtime, probs = 0.95))
   
