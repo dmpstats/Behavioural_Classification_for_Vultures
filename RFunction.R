@@ -283,14 +283,6 @@ rFunction = function(data,
   if(!ACCclassify) logger.info("  |- No accelerometer data detected in any of the tracks: skipping ACC preparation.")
   
   
-  
-  ## Identify overnight roosting sites  --------------------------
-  
-  logger.info(" |- Deriving overnight roosting sites.")
-  
-  data <- add_roost_cols(data, sunrise_leeway, sunset_leeway)
-  
-  
   ## Stationary Speed Vs day-hours model  --------------------------------------------
   
   logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
@@ -440,6 +432,15 @@ rFunction = function(data,
   #' tagged as part of a roost-site
   
   logger.info("[4] Performing roosting-site classification")
+  
+  #### [4.1] Identify overnight roosting sites ------
+  logger.info(" |- Deriving overnight roosting sites.")
+  
+  data <- add_roost_cols(data, sunrise_leeway, sunset_leeway)
+  
+  
+  #### [4.2] Apply roosting-site rule ---------
+  logger.info(" |- Apply roost-site rule")
   
   data %<>%
     group_by(ID, roostgroup) %>%
