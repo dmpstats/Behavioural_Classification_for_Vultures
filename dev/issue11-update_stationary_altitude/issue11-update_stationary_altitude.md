@@ -326,12 +326,12 @@ common observed changes when the speed-time model is fitted to
 stationary events (after update in altitude classification). In essence,
 when events reclassified as Travelling in the altitude classification
 step \[2\] were excluded from the model fitting, resulting estimates of
-of expected stationary-speeds given hours-since-midnight tend to be
-lower than those obtained under the original model.
+expected stationary-speeds given hours-since-midnight tend to be lower
+than those obtained under the original model.
 
 ![](screenshot_speedtime_old_1.png) *Original version*
 
-![](screenshot_speedtime_old_1.png) *Stationary speed-time model
+![](screenshot_speedtime_new_1.png) *Stationary speed-time model
 version*
 
 Looking at the distribution of speeds below `travelcut` split between
@@ -344,8 +344,7 @@ Therefore, excluding altitude-based travelling events with speeds below
 speeds above the 95% CI, resulting in a larger number of Resting events
 being re-classified as Feeding events.
 
-<img src="hist_speed_below_travelcut_travel_vs_nontravel.png"
-style="width:50.0%" />
+<img src = "hist_speed_below_travelcut_travel_vs_nontravel.png" width = "70%">
 
 ## All changes combined
 
