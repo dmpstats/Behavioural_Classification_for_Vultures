@@ -818,13 +818,14 @@ add_nonroost_stationary_cols <- function(data){
   
   # Generate non-roosting stationary run-length data
   data %<>%
-    # QUESTION (BC): Shouldn't it be grouped by yearmonthday too? If not, the
-    # same run-length could link locations separated by gaps larger than a day
-    # (e.g. due to lack of GPS signal). Note: yearmonthday would have to be
-    # included in the subsequent group_by steps accordingly
     group_by(ID) %>%
     mutate(
       stationaryNotRoost = ifelse(stationary == 1 & behav %!in% c("SRoosting"), 1, 0),
+      # Adding condition to break runs spreading over large time gaps in GPS
+      # transmission, in order to stop inflation of run durations in `cumtimestat`.
+      # For now, hard-coding boundary to 3/4 of 24hrs has a value greater than 
+      # regular and acceptable overnight transmission gaps seen in some studies
+      stationaryNotRoost = ifelse(stationaryNotRoost == 1 & timediff_hrs > 16, NA, stationaryNotRoost),
       stationary_runLts = data.table::rleid(stationaryNotRoost == 1),     # id runs of stationary & non-stationary entries
       stationary_runLts = ifelse(stationaryNotRoost == 0, NA, stationary_runLts)
     ) %>%
