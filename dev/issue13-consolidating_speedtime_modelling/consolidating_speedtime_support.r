@@ -25,7 +25,8 @@ theme_set(theme_light())
 
 # Read (encrypted) input datasets for testing
 test_dt <- secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key))
-test_dt$metadata
+
+test_dt$metadata |> kable(format = "markdown")
 
 # thinning gaia and nam dataset for 5mins gap for faster testing. 
 test_dt$gaia <- mt_filter_per_interval(test_dt$gaia, unit = "2 min")
@@ -69,6 +70,7 @@ compar_out <- imap(
 
 
 
+
 map(compar_out, pluck(4)) |> 
   list_rbind(names_to = "dataset") |> 
   mutate(
@@ -84,6 +86,59 @@ map(compar_out, pluck(4)) |>
   select(dataset, behav, change) |> 
   pivot_wider(names_from = behav, values_from = change) |> 
   kable(format = "markdown")
+
+
+
+
+
+# Version comparison from changing hours-since-midnight to hours-since-sunrise -----------------
+
+source("dev/issue13-consolidating_speedtime_modelling/RFunction_diags.R")
+source("dev/issue13-consolidating_speedtime_modelling/RFunction_sunrise.R")
+
+compar_out <- imap(
+  test_dt[names(test_dt) != "metadata"],
+  \(dt, dt_name){
+    
+    message(paste0("\nPerforming comparison for dataset ", dt_name, "\n"))
+    
+    compare_versions(
+      dt = dt,
+      f_old = rFunction_diags, 
+      f_new = rFunction_sunrise, 
+      fun_new_label = "hrs_since_sunrise", 
+      fun_old_label = "voided non-convergers",
+      artifacts_path = "data/output/",
+      travelcut = 3,
+      create_plots = FALSE,
+      sunrise_leeway = 0,
+      sunset_leeway = 0,
+      altbound = 25,
+      keepAllCols = TRUE, 
+      return_output = TRUE
+    )}
+)
+
+
+map(compar_out, pluck(4)) |> 
+  list_rbind(names_to = "dataset") |> 
+  mutate(
+    pctg_change = round(pctg_change, 1),
+    change_sign = sign(pctg_change),
+    change_sign = case_when(
+      change_sign == 1 ~ "+",
+      change_sign == -1 ~ "-",
+      change_sign == 0 ~ ""
+    ),
+    change = glue::glue("{`voided non-convergers`} -> {`hrs_since_sunrise`} ({change_sign}{abs(pctg_change)}%)")
+  ) |> 
+  select(dataset, behav, change) |> 
+  pivot_wider(names_from = behav, values_from = change) |> 
+  kable(format = "markdown")
+
+
+
+
 
 
 

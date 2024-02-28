@@ -505,7 +505,7 @@ rFunction_diags = function(data,
       group_by(ID) |>
       dplyr::group_split() |>
       furrr::future_map(
-        .f = speed_time_model, pb = pb,
+        .f = speed_time_model_diag, pb = pb,
         .options = furrr_options(
           seed = TRUE,
           packages = c("move2", "sf", "MRSea", "dplyr", "lubridate",
@@ -898,7 +898,7 @@ add_nonroost_stationary_cols <- function(data){
 #' @param in_parallel logical, whether the function is being called inside a
 #'   parallel worker. This is required for managing sink connections
 #'   
-speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRUE){
+speed_time_model_diag <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRUE){
   
   id <- mt_track_id(dt) |> unique() |> as.character()
   
@@ -1020,7 +1020,7 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
     # build diagnostic plots and export as artifacts
     if(diag_plots){
       
-      p_fit <- plot_model_fit(dt, fit)
+      p_fit <- plot_model_fit_diag(dt, fit)
       p_acf <- plot_acf(fit)
       p_resids <- plot_diagnostics(fit, plotting = "r", print = FALSE)
       p_obs_fit <- plot_diagnostics(fit, plotting = "f", print = FALSE)
@@ -1067,7 +1067,7 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
 
 
 #' /////////////////////////////////////////////////////////////////////////////////////////////
-plot_model_fit <- function(dt, fit){
+plot_model_fit_diag <- function(dt, fit){
   
   dt |> 
     as_tibble() |> 

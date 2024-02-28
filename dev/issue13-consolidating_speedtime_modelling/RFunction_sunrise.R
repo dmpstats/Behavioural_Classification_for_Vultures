@@ -26,7 +26,7 @@ not_null <- Negate(is.null)
 
 # Main RFunction ====================================================================
 
-rFunction = function(data, 
+rFunction_sunrise = function(data, 
                      travelcut,
                      create_plots = TRUE,
                      sunrise_leeway = 0,
@@ -35,6 +35,16 @@ rFunction = function(data,
                      keepAllCols = FALSE
                      # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
 ) {
+  
+  
+  #' TODO (Desirables)
+  #' 
+  #'   - make use of 'dplyr::' consistent
+  #'   - Consolidate summary plots
+  #'   - drop "ID" and "timestamp" redefinition and use "mt_" functions instead
+  #'   - improve error messages with {rlang}
+  #'   - add timestamps to logger
+  
   
   ## Globals --------------------------------------
   ggplot2::theme_set(ggplot2::theme_bw())
@@ -142,7 +152,7 @@ rFunction = function(data,
   
   
   ### Generate general variables  ------------------------------
-
+  
   logger.info(" |- Generate general variables")
   
   data %<>% dplyr::mutate(
@@ -176,7 +186,7 @@ rFunction = function(data,
       dist_m = as.vector(mt_distance(., units = "m"))
     ) 
   
-
+  
   ### Identify stationary points -----------------------------------
   
   logger.info(" |- Identify stationary points")
@@ -185,7 +195,7 @@ rFunction = function(data,
   #' - events with speed <= travelcut == stationary (1),
   #' - events where speed > travelcut == non-stationary (0),
   #' - events with NA speed == stationary (1)
-
+  
   data %<>%
     mutate(
       stationary = case_when(
@@ -244,12 +254,12 @@ rFunction = function(data,
   
   
   ### Night-time identification ----------------------------
-
+  
   #' (i) nightpoint == 0 if sunrise_timestamp < timestamp < sunrise_timestamp (+/- leeway), 
   #' (ii) otherwise nightpoint == 1
   
   logger.info(" |- Identify night-time locations")
-
+  
   data %<>% mutate(
     nightpoint = ifelse(
       between(
@@ -258,7 +268,7 @@ rFunction = function(data,
         sunset_timestamp + lubridate::minutes(sunset_leeway)
       ), 
       0, 1)
-    )
+  )
   
   
   
@@ -291,7 +301,7 @@ rFunction = function(data,
   
   if(!ACCclassify) logger.info(" |- No accelerometer data detected in any of the tracks: skipping ACC preparation.")
   
-
+  
   
   # Behaviour Classification Steps [1 -7] ========================================================
   
@@ -325,7 +335,7 @@ rFunction = function(data,
   #' (iii) If a bird is flatlining, it remains SResting
   
   if(alt_classify){
-  
+    
     logger.info("[2] Performing altitude classification")
     
     data %<>%
@@ -349,7 +359,7 @@ rFunction = function(data,
     
     # Log results
     logger.info(paste0("   |> ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))  
-  
+    
   } else {
     logger.warn("[2] Skipping altitude classification due to absence of altitude data")
   }
@@ -434,7 +444,7 @@ rFunction = function(data,
   
   # Log results
   logger.info(paste0("   |> ", sum(data$RULE == "[4] Stationary at roost site", na.rm = T), " locations re-classified as SRoosting"))
-
+  
   
   
   
@@ -443,7 +453,7 @@ rFunction = function(data,
   #' Remaining Resting locations re-classified as Feeding if they are part of a
   #' sequence of non-roosting time-points that remain stationary for an
   #' unusually long period of time
-   
+  
   logger.info("[5] Performing non-roosting stationary cumulative-time classification")
   
   #### [5.1] Derive non-roosting stationary runs  -----
@@ -481,22 +491,22 @@ rFunction = function(data,
   logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
   
   progressr::handlers("cli")
-
+  
   #' setting parallel processing using availableCores() to set # workers.
   #' {future} imports that function from {parallelly}, which  is safe to use in
   #' container environments (e.g. Docker)
   future::plan("multisession", workers = future::availableCores(omit = 2))
-
+  
   progressr::with_progress({
-
+    
     # initiate progress signaler
     pb <- progressr::progressor(steps = mt_n_tracks(data))
-
+    
     data <- data |>
       group_by(ID) |>
       dplyr::group_split() |>
       furrr::future_map(
-        .f = speed_time_model, pb = pb,
+        .f = speed_time_model_sunrise, pb = pb,
         .options = furrr_options(
           seed = TRUE,
           packages = c("move2", "sf", "MRSea", "dplyr", "lubridate",
@@ -504,9 +514,9 @@ rFunction = function(data,
         )
       ) |>
       mt_stack()
-
+    
   })
-
+  
   future::plan("sequential")
   
   # data <- data |>
@@ -628,8 +638,11 @@ rFunction = function(data,
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC",
-        "kmphCI2.5", "kmphPI2.5", "kmphpreds"
+        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", 
+        "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", 
+        "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", 
+        "cumtimestat_pctl", "cumtimestat_pctl_BC",
+        "kmphCI2.5", "kmphpreds"
       ) 
     ))
     
@@ -638,7 +651,7 @@ rFunction = function(data,
     logger.trace("Removing select nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "stationaryNotRoost", "cumtimestat", "kmphPI2.5",
+        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav"
       ) 
     ))
   }
@@ -717,7 +730,7 @@ acc_var <- function(data, interpolate = FALSE) {
   return(data)
 }
 
-  
+
 
 #' /////////////////////////////////////////////////////////////////////////////////////////////  
 #' Derive and add roosting columns to data 
@@ -886,7 +899,7 @@ add_nonroost_stationary_cols <- function(data){
 #' @param in_parallel logical, whether the function is being called inside a
 #'   parallel worker. This is required for managing sink connections
 #'   
-speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRUE){
+speed_time_model_sunrise <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRUE){
   
   id <- mt_track_id(dt) |> unique() |> as.character()
   
@@ -931,9 +944,9 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
   
   # run SALSA
   fit <- rlang::try_fetch(
-
+    
     suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
-
+      
       runSALSA1D(
         initialModel,
         salsa1dlist,
@@ -944,7 +957,7 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
         panelid = newdat$yearmonthday,
         suppress.printout = TRUE)$bestModel
     ),
-
+    
     error = \(cnd){
       # needed to handle unclosed connection in some error cases of runSALSA1D
       if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
@@ -1008,7 +1021,7 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
     # build diagnostic plots and export as artifacts
     if(diag_plots){
       
-      p_fit <- plot_model_fit(dt, fit)
+      p_fit <- plot_model_fit_sunrise(dt, fit)
       p_acf <- plot_acf(fit)
       p_resids <- plot_diagnostics(fit, plotting = "r", print = FALSE)
       p_obs_fit <- plot_diagnostics(fit, plotting = "f", print = FALSE)
@@ -1055,7 +1068,7 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
 
 
 #' /////////////////////////////////////////////////////////////////////////////////////////////
-plot_model_fit <- function(dt, fit){
+plot_model_fit_sunrise <- function(dt, fit){
   
   dt |> 
     as_tibble() |> 
