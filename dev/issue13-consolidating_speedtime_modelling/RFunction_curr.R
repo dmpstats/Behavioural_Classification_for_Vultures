@@ -15,9 +15,6 @@ library("spatstat.utils")
 library("furrr")
 library("future")
 library("progressr")
-library("patchwork")
-library("splines")
-library("rlang")
 library("grid")
 
 `%!in%` <- Negate(`%in%`)
@@ -26,7 +23,7 @@ not_null <- Negate(is.null)
 
 # Main RFunction ====================================================================
 
-rFunction = function(data, 
+rFunction_curr = function(data, 
                      travelcut,
                      create_plots = TRUE,
                      sunrise_leeway = 0,
@@ -36,8 +33,22 @@ rFunction = function(data,
                      # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
 ) {
   
-
-  # Validate Input Data ----------------------------------------------------------------------------------------------
+  
+  #' TODO
+  #' 
+  #' > High Priority:
+  #'  - Check if projected Vs non-projected input has an effect on results  
+  #' 
+  #' > Medium Priority:
+  #'   - Consolidate summary plots
+  #' 
+  #' > Low priority:
+  #'   - drop "ID" and "timestamp" redefinition and use "mt_" functions instead
+  #'   - improve error messages with {rlang}
+  #'   - add timestamps to logger
+  
+  
+  ## Validate Input Data --------------------------------------------
   
   logger.trace(paste0(
     "Input data provided:  \n", 
@@ -168,7 +179,7 @@ rFunction = function(data,
     # distinct(timestamp, .keep_all = TRUE) %>%
     mutate(
       timediff_hrs = as.vector(mt_time_lags(., units = "hours")),
-      kmph = as.vector(mt_speed(., units = "km/h"))
+      kmph = as.vector(mt_speed(., units = "km/h")),
       dist_m = as.vector(mt_distance(., units = "m"))
     ) 
   
@@ -477,42 +488,32 @@ rFunction = function(data,
   logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
   
   progressr::handlers("cli")
-
+  
   #' setting parallel processing using availableCores() to set # workers.
   #' {future} imports that function from {parallelly}, which  is safe to use in
   #' container environments (e.g. Docker)
   future::plan("multisession", workers = future::availableCores(omit = 2))
-
+  
   progressr::with_progress({
-
+    
     # initiate progress signaler
     p <- progressr::progressor(steps = mt_n_tracks(data))
     
     data <- data |> 
-    pb <- progressr::progressor(steps = mt_n_tracks(data))
-
-    data <- data |>
       group_by(ID) |>
       dplyr::group_split() |>
       furrr::future_map(
-        .f = speed_time_model, pb = pb,
+        .f = speed_time_model_curr, p = p,
         .options = furrr_options(
           seed = TRUE,
-          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate",
-                       "patchwork", "ggplot2")
+          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate")
         )
       ) |>
       mt_stack()
-
+    
   })
-
-  future::plan("sequential")
   
-  # data <- data |>
-  #   group_by(ID) |>
-  #   dplyr::group_split() |>
-  #   map(speed_time_model, pb = NULL, in_parallel = FALSE) |>
-  #   mt_stack()
+  future::plan("sequential")
   
   
   #### [6.2] Apply speed-time rule  ----------------
@@ -627,8 +628,11 @@ rFunction = function(data,
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC",
-        "kmphCI2.5", "kmphPI2.5", "kmphpreds"
+        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", 
+        "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", 
+        "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", 
+        "cumtimestat_pctl", "cumtimestat_pctl_BC",
+        "kmphCI2.5", "kmphpreds"
       ) 
     ))
     
@@ -637,7 +641,7 @@ rFunction = function(data,
     logger.trace("Removing select nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "stationaryNotRoost", "cumtimestat", "kmphPI2.5",
+        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav"
       ) 
     ))
   }
@@ -875,26 +879,11 @@ add_nonroost_stationary_cols <- function(data){
 
 
 #' /////////////////////////////////////////////////////////////////////////////////////////////
-#' Fit stationary-speed given decimal day-hours, for one single track
-#' 
-#' @param dt a move2 object for one single track
-#' @param pb a Progressor Function generated via `progressr::progressor` to
-#'   signal updates
-#' @param diag_plots logical, whether to generate model diagnostic plots and
-#'   export them as App artifacts
-#' @param in_parallel logical, whether the function is being called inside a
-#'   parallel worker. This is required for managing sink connections
-#'   
-speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRUE){
+speed_time_model_curr <- function(dt, p){
   
-  id <- mt_track_id(dt) |> unique() |> as.character()
+  id <- unique(dt$ID)
   
-  if(length(id) > 1){
-    stop("`dt` contains data for more than one track. Please provide a move2 object with a single track")
-  } 
-  
-  #logger.info(paste0("   |> Fitting model for track ", id, " @ ", lubridate::now()))
-  logger.info(paste0("   |> Fitting model for track ", id))
+  logger.info(paste0("   |> Fitting model for track ", id, " @ ", lubridate::now()))
   
   newdat <- dt %>%
     dplyr::mutate(
@@ -911,14 +900,9 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
   # this modelling is not done (e.g. need 10 days??) ** #
   # ALSO what happens if more than 30 days data provided??
   #
-  # NOTE: Predicting to full dataset for convenience in data wrangling - i.e. no 
-  # post-processing required to combine predictions for stationary-only events 
-  # with the full data). No apparent cost in terms of computational speed
-  # Non-stationary events will be ignored in the subsequent classification step
+  # NOTE: Predicting to full dataset (we'll ignore the travelling points in the classification later)
   
-  initialModel <- suppressWarnings(
-    glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
-  )
+  initialModel <- glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
   
   salsa1dlist <- list(fitnessMeasure = 'BIC',
                       minKnots_1d = c(1),
@@ -929,10 +913,10 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
                       gaps = c(0))
   
   # run SALSA
-  fit <- rlang::try_fetch(
-
+  fit <- tryCatch(
+    
     suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
-
+      
       runSALSA1D(
         initialModel,
         salsa1dlist,
@@ -943,44 +927,27 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
         panelid = newdat$yearmonthday,
         suppress.printout = TRUE)$bestModel
     ),
-
+    
     error = \(cnd){
-      # needed to handle unclosed connection in some error cases of runSALSA1D
-      if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
+      # needed to handle apparent unclosed connection in some error cases of runSALSA1D
+      sink()
+      
       logger.warn(
         paste0(
-          "      |x Ouch!! Something went wrong while fitting the model.\n",
-          "             |x `runSALSA1D()` returned the following error message:\n",
-          "             |x \"", conditionMessage(cnd), "\"\n",
-          "             |x Speed thresholds WON'T be considered in the behaviour classification of this track."
+          "    |x Ouch!! Something went wrong while fitting the model for subject ", id, ".\n",
+          "           |x `runSALSA1D()` returned the following error message:\n",
+          "           |x \"", conditionMessage(cnd), "\"\n",
+          "           |x Speed thresholds WON'T be considered in the behaviour classification of subject ", id, "."
         ))
+      
       return(NULL)
-    },
-    
-    # In addition, invalidate speed-time classification if model convergence issues arise
-    warning = \(cnd){
-      if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
-        if(in_parallel){
-          if(sink.number() > 2) sink()
-        }else{
-          if(sink.number() == 1) sink()
-        } 
-        logger.warn(
-          paste0(
-            "      |x Aargh!! Speed-time model failed to fit due to convergence issues.\n",
-            "             |x Speed thresholds WON'T be considered in the behaviour classification of this track."
-          ))
-        return(NULL)
-      } else{
-        rlang::zap()
-      }
     }
   )
   
-  
   if(!is_null(fit)){
     
-    dt$kmphpreds <- predict(object = fit, newdata = dt) |> as.vector()
+    dt$kmphpreds <- predict(object = fit, newdata = dt)
+    
     
     boots <- suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
       MRSea::do.bootstrap.cress.robust(
@@ -998,39 +965,13 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
     # pis <- t(apply(predint, 1, FUN = quantile,probs = c(0.025, 0.975)))
     
     dt <- dt %>%
-      mutate(
-        `kmphCI2.5`= cis[,1],
-        `kmphCI97.5` = cis[,2],
-        #"kmphPI2.5" = pis[,1], "kmphPI97.5" = pis[,2]
+      mutate("kmphCI2.5" = cis[,1],
+             "kmphCI97.5" = cis[,2],
+             #"kmphPI2.5" = pis[,1],
+             #"kmphPI97.5" = pis[,2]
       )
     
-    # build diagnostic plots and export as artifacts
-    if(diag_plots){
-      
-      p_fit <- plot_model_fit(dt, fit)
-      p_acf <- plot_acf(fit)
-      p_resids <- plot_diagnostics(fit, plotting = "r", print = FALSE)
-      p_obs_fit <- plot_diagnostics(fit, plotting = "f", print = FALSE)
-      p_mn_var <- plotMeanVar(fit, print = FALSE, cut.bins = find_cut.bins(fit))
-      # Next graph involves model updating to more flexible predictor, so
-      # refitting brings new issues at times. Handling errors by skipping the plotting
-      p_cmltv_rsd <- tryCatch(
-        plot_cmltv_resids(fit, varlist = "hourmin", variableonly = TRUE, print = FALSE), 
-        error = \(cnd) grid::textGrob('Cumulative Residuals Plot Not Available')
-      )
-      
-      p_diags <- (p_fit + p_acf) / (p_resids + p_obs_fit) / (p_mn_var + p_cmltv_rsd) + 
-        patchwork::plot_annotation(title = paste0("Track ID: ", id)) &
-        ggplot2::theme_bw() & 
-        theme(legend.position = "top")
-      
-      ggplot2::ggsave(
-        filename = appArtifactPath(paste0("speed_hrs_diagnostics - ", id, ".png")),
-        plot = p_diags, 
-        height = 10, width = 11
-      )
-    }
-    
+    # ultimately probably only need to keep last column (kmphPI97.5)
   } else{
     
     dt <- dt |>
@@ -1038,296 +979,12 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
         kmphpreds = NA,
         `kmphCI2.5` = NA,
         `kmphCI97.5` = NA,
-        #`kmphPI2.5` = NA, `kmphPI97.5` = NA
+        #`kmphPI2.5` = NA,
+        #`kmphPI97.5` = NA
       )
   }
   
-  # Update progress bar, if active
-  if(not_null(pb)){
-    pb()  
-  }
+  p()
   
   return(dt)
-}
-
-
-
-
-#' /////////////////////////////////////////////////////////////////////////////////////////////
-plot_model_fit <- function(dt, fit){
-  
-  dt |> 
-    as_tibble() |> 
-    distinct(hourmin, .keep_all = TRUE) |> 
-    ggplot(aes(x = hourmin)) +
-    geom_ribbon(aes(ymin = kmphCI2.5, ymax = kmphCI97.5), fill = "#80CBC4", alpha = 0.5) +
-    geom_line(aes(y = kmphpreds), linewidth = 1) +
-    geom_rug(sides = "b") +
-    # add stationary points with speeds above the upper boundary of the 95% CI
-    geom_point(
-      data = dt |> filter(kmph > kmphCI97.5, stationary == 1),
-      aes(y = kmph),
-      col= "red", alpha = 1/4, size = 1
-    ) +
-    # add selected knots in fitted model
-    geom_vline(
-      xintercept = fit$splineParams[[2]]$knots, colour = "gray20", 
-      linetype = "dashed", linewidth = 0.6)
-} 
-
-
-#' /////////////////////////////////////////////////////////////////////////////////////////////
-# Adapted from https://stackoverflow.com/questions/17788859/acf-plot-with-ggplot2-setting-width-of-geom-bar
-plot_acf <- function(fit, alpha = 0.05){
-  
-  pears_resids <- residuals(fit, type="pearson")
-  acf_out <- acf(pears_resids, plot = FALSE)
-  acf_dt <- with(acf_out, tibble(lag, acf))
-  
-  # CI for alpha
-  lim1 <- qnorm((1 + (1 - alpha))/2)/sqrt(acf_out$n.used)
-  lim0 <- -lim1
-  
-  ggplot(data = acf_dt, aes(x = lag, y = acf)) +
-    geom_hline(aes(yintercept = 0)) +
-    geom_segment(aes(xend = lag, yend = 0)) +
-    labs(
-      y = "Autocorrelation in Pearson Residuals", 
-      #y = "ACF"
-    ) +
-    geom_hline(aes(yintercept = lim1), linetype = 2, color = 'blue') +
-    geom_hline(aes(yintercept = lim0), linetype = 2, color = 'blue')
-  
-}
-
-
-
-
-#' /////////////////////////////////////////////////////////////////////////////////////////////
-#'  Hacked from MRSea::runDiagnostics() to offer the option of returning plot objects (`print`)
-#'  
-plot_diagnostics <-function(model, plotting='b', save=FALSE, print = TRUE, label = NULL){
-  
-  p_theme <- theme_bw() +
-    theme(
-      panel.grid.major=element_blank(), 
-      axis.text.x=element_text(size=10), 
-      axis.text.y=element_text(size=10), 
-      axis.title.x=element_text(size=12), 
-      axis.title.y=element_text(size=12)
-    )
-  
-  df <- data.frame(
-    fits = fitted(model),
-    response = model$y)
-  
-  # Set printing action
-  if(print & plotting =='b'){
-    devAskNewPage(ask=TRUE)
-  }
-  
-  if(plotting =='b' | plotting=='f'){
-    
-    #Assessing predictive power
-    #r-squared:
-    r2 <- 1-(sum((df$response - df$fits)**2)/sum((df$response - mean(df$response))**2))
-    
-    #concordance correlation
-    num <- 2*sum((df$response - mean(df$response))*(df$fits - mean(fitted(model))))
-    den <- sum((df$response - mean(df$response))**2) + sum((df$fits - mean(df$fits))**2)
-    rc <-num/den
-    
-    f <- ggplot(df) + 
-      geom_point(aes(response, fits), alpha=0.15) + 
-      geom_abline(intercept=0, slope=1) + 
-      labs(
-        x='Observed Values', 
-        y='Fitted Values', 
-        subtitle=paste("Concordance correlation: ", 
-                       round(rc,4), "\nMarginal R-squared value: ", 
-                       round(r2,4), sep="")
-      ) +
-      p_theme
-    
-    if(save) ggsave(paste0(label, "FitPlots_fitted.png"), f, height=6, width=8)
-    if(print) plot(f)
-  }
-  
-  if(plotting =='b' | plotting=='r'){
-    
-    scaledRes <- residuals(model, type="response")/
-      sqrt(family(model)$variance(fitted(model))*as.numeric(summary(model)$dispersion[1]))
-    
-    sm <- lowess(fitted(model), scaledRes)
-    
-    df <- df |> 
-      dplyr::mutate(
-        res=scaledRes, 
-        smx=sm$x, 
-        smy=sm$y
-      )
-    
-    r <- ggplot(df) + 
-      geom_point(aes(fits, res), alpha=0.15)+ 
-      geom_line(aes(smx, smy), col='red') + 
-      geom_abline(intercept=0, slope=0) + 
-      labs(x='Fitted Values', y='Scaled Pearsons Residuals') +
-      p_theme
-    
-    if(save) fgsave(paste0(label, "FitPlots_resids.png"), r, height=6, width=8)
-    if(print) plot(r)
-  }
-  
-  if(!print){
-    if(plotting=='b'){
-      return(list(obs_vs_fitted = f, scaled_resids = r))
-    } else if(plotting=='f'){
-      return(f)
-    } else if(plotting=='r'){
-      return(r)
-    }
-  }else{
-    devAskNewPage(ask=FALSE)
-    return(invisible())
-  }
-}
-
-
-#' /////////////////////////////////////////////////////////////////////////////////////////////
-#'  Hacked from MRSea::plotCumRes() to add option of returning plot objects (`print`).
-#'  Required replacing loop with imap() to deal with scoping issues with using
-#'  loops and ggplots
-plot_cmltv_resids <- function(model, varlist = NULL, print = TRUE, save = FALSE, 
-                              label = "", variableonly = FALSE){
-  
-  require(splines)
-  
-  if (is.null(varlist)) {
-    namesOfx <- c(c("Predicted", "Index"))
-  }
-  else {
-    namesOfx <- c(varlist, c("Predicted", "Index"))
-  }
-  
-  md_cls <- class(model)[1]
-  if (md_cls %in% c("geeglm", "glm", "gamMRSea")) dat <- data.frame(model$data)
-  if (md_cls == "gam")  dat <- data.frame(model$model)
-  
-  if (!is.null(varlist)) {
-    coefpos <- c()
-    for (z in 1:(length(namesOfx) - 2)) {
-      coefpos <- c(coefpos, grep(namesOfx[z], names(dat)))
-    }
-  }
-  
-  dat <- dat %>% mutate(Predicted = fitted(model), Index = 1:n())
-  
-  if (variableonly) plotvar <- varlist else plotvar <- namesOfx
-  
-  p_out <- purrr::imap(plotvar, \(varname, z){
-    
-    type = "response"; yl <- "Response Residuals"
-    
-    if (varname == "Predicted") {
-      type = "response"
-      yl = "Response Residuals"
-    }
-    
-    plotdat <- dat %>% mutate(m.resids = residuals(model, type = type), resids.lbl = "resids")
-    plotdat <- eval(parse(text = paste0("arrange(plotdat, ", varname, ")")))
-    plotdat <- plotdat %>% mutate(m.cumsum = cumsum(m.resids), cumsum.lbl = "cmltv_rsd")
-    
-    if (z < (length(namesOfx) - 1)) {
-      covardat <- dat[model$y > 0, coefpos[z]]
-      newknots <- as.vector(quantile(covardat, seq(0.05, 0.95, length = 7)))
-      newknots <- unique(newknots)
-      term <- labels(terms(model))[grep(namesOfx[z], labels(terms(model)))]
-      newterm <- paste("bs(", namesOfx[z], ", knots= c(",
-                       paste(newknots, sep = " ", collapse = ","), "))",
-                       sep = "")
-      eval(parse(text = paste("covarModelUpdate<-update(model, .~. -",
-                              term, " +", newterm, ", data=plotdat)", sep = "")))
-      plotdat <- plotdat %>% 
-        mutate(
-          new.fits = fitted(covarModelUpdate),
-          new.resids = residuals(covarModelUpdate, type = type),
-          new.cumsum = cumsum(new.resids),
-          new.cumsum.lbl = "cmltv_rsd_flex"
-        )
-    }
-    
-    maxy <- max(plotdat$m.resids, plotdat$m.cumsum)
-    miny <- min(plotdat$m.resids, plotdat$m.cumsum)
-    
-    plt <- ggplot(plotdat) +
-      geom_point(aes(x = pull(plotdat, varname), y = m.resids, colour = resids.lbl)) +
-      xlab(varname) +
-      ylab(yl) +
-      geom_line(aes(x = pull(plotdat, varname), y = m.cumsum, colour = cumsum.lbl)) +
-      geom_hline(yintercept = 0) +
-      labs(x = varname, y = yl) +
-      theme_bw()
-    
-    if (z < (length(namesOfx) - 1)) {
-      plt <- plt +
-        geom_line(
-          aes(x = pull(plotdat, varname), y = new.cumsum, colour = new.cumsum.lbl)) +
-        geom_point(
-          aes(x = pull(plotdat, varname), y = new.resids, colour = new.cumsum.lbl),
-          alpha = 1/5)
-    }
-    plt +
-      scale_colour_manual(
-        values = c(resids ="turquoise4", cmltv_rsd = "black", cmltv_rsd_flex = "grey"),
-        breaks= c("resids", "cmltv_rsd", "cmltv_rsd_flex"),
-        name = "",
-        labels = c("Residuals", "Cumulative\n Residuals", "Cumulative Residuals under\nhigher model flexibility")
-      ) +
-      theme(legend.position="top")
-  })
-  
-  if(save){
-    iwalk(p_out, 
-          ~ggsave(filename = paste("CumRes_", namesOfx[.y], label, ".png", sep = ""),
-                  plot = .x, height = 600, width = 700, units = "px"))
-  }
-  
-  if(print){
-    devAskNewPage(ask = TRUE)
-    print(p_out)  
-    devAskNewPage(ask = FALSE)
-    invisible()
-  }else{
-    if(length(p_out) == 1){
-      p_out <- p_out[[1]]
-    } else{
-      names(p_out) <- plotvar
-    }
-    return(p_out)
-  }
-  
-}
-
-
-
-#' /////////////////////////////////////////////////////////////////////////////////////////////
-#' Helper function to find the a suitable value for parameter `cut.bins` for
-#' function MRSea::plotMeanVar().
-#' 
-#' This is required to automate the generation of that plot, i.e. in a
-#' non-interactive session such as MoveApps
-find_cut.bins <- function(model){
-  
-  cut.bins <- 30
-  nainthahouse <- TRUE
-  
-  while(nainthahouse){
-    cutpts <- unique(quantile(fitted(model), prob = seq(0, 1, length = cut.bins)))
-    mycuts <- cut(fitted(model), breaks = cutpts)
-    meanfits <- tapply(fitted(model), mycuts, mean)
-    nainthahouse <- any(is.na(meanfits))
-    if(nainthahouse) cut.bins <- cut.bins - 1
-  }
-  
-  cut.bins
 }

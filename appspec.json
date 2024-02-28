@@ -95,6 +95,18 @@
       },
       {
         "name": "progressr"
+      },
+      {
+        "name": "patchwork"
+      },
+      {
+        "name": "splines"
+      },
+      {
+        "name": "rlang"
+      },
+      {
+        "name": "grid"
       }
     ]
   },
