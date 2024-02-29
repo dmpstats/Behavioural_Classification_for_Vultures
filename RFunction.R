@@ -908,86 +908,104 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
   #logger.info(paste0("   |> Fitting model for track ", id, " @ ", lubridate::now()))
   logger.info(paste0("   |> Fitting model for track ", id))
   
-  newdat <- dt %>%
-    dplyr::mutate(
-      month = month(timestamp),
-      response = kmph + 0.00001
-    ) %>%
-    dplyr::filter(
-      !is.na(response),
-      stationary == 1,
-      timestamp > (max(timestamp) - days(30))
-    )
+  # Check number of days covered in dataset
+  n_days <- difftime(max(dt$timestamp), min(dt$timestamp), units = "day") 
   
-  # ** add if statement or similar to ensure that if not enough data,
-  # this modelling is not done (e.g. need 10 days??) ** #
-  # ALSO what happens if more than 30 days data provided??
-  #
-  # NOTE: Predicting to full dataset for convenience in data wrangling - i.e. no 
-  # post-processing required to combine predictions for stationary-only events 
-  # with the full data). No apparent cost in terms of computational speed
-  # Non-stationary events will be ignored in the subsequent classification step
-  
-  initialModel <- suppressWarnings(
-    glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
-  )
-  
-  salsa1dlist <- list(fitnessMeasure = 'BIC',
-                      minKnots_1d = c(1),
-                      maxKnots_1d = c(5),
-                      startKnots_1d = c(1),
-                      degree = c(2),
-                      maxIterations = 10,
-                      gaps = c(0))
-  
-  # run SALSA
-  fit <- rlang::try_fetch(
-
-    suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
-
-      runSALSA1D(
-        initialModel,
-        salsa1dlist,
-        varlist=c("hrs_since_sunrise"),
-        splineParams=NULL,
-        datain=newdat,
-        predictionData = filter(dt, !is.na(kmph)),
-        panelid = newdat$yearmonthday,
-        suppress.printout = TRUE)$bestModel
-    ),
-
-    error = \(cnd){
-      # needed to handle unclosed connection in some error cases of runSALSA1D
-      if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
-      logger.warn(
-        paste0(
-          "      |x Ouch!! Something went wrong while fitting the model.\n",
-          "             |x `runSALSA1D()` returned the following error message:\n",
-          "             |x \"", conditionMessage(cnd), "\"\n",
-          "             |x Speed thresholds WON'T be considered in the behaviour classification of this track."
-        ))
-      return(NULL)
-    },
+  #' Impose condition where fitting only performed if there is more than 10 days
+  #' of data, otherwise data deemed insufficient to robustly describe the
+  #' relationship between stationary speeds and time-of-the-day (expressed as of
+  #' hours-since-sunrise)
+  if(n_days < 10){
     
-    # In addition, invalidate speed-time classification if model convergence issues arise
-    warning = \(cnd){
-      if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
-        if(in_parallel){
-          if(sink.number() > 2) sink()
-        }else{
-          if(sink.number() == 1) sink()
-        } 
+    logger.warn(
+      paste0(
+        "      |x Track data covers < 10 days. This is deemed insufficient to model speed-give-time robustly.\n", 
+        "             |x Speed-time classification will not be applied to this track."
+      ))
+    
+    fit <- NULL
+    
+  } else {
+    
+    newdat <- dt %>%
+      dplyr::mutate(
+        month = month(timestamp),
+        response = kmph + 0.00001
+      ) %>%
+      dplyr::filter(
+        !is.na(response),
+        stationary == 1,
+        timestamp > (max(timestamp) - days(30))
+      )
+    
+    # ALSO what happens if more than 30 days data provided??
+    #
+    # NOTE: Predicting to full dataset for convenience in data wrangling - i.e. no 
+    # post-processing required to combine predictions for stationary-only events 
+    # with the full data). No apparent cost in terms of computational speed
+    # Non-stationary events will be ignored in the subsequent classification step
+    
+    initialModel <- suppressWarnings(
+      glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
+    )
+    
+    salsa1dlist <- list(fitnessMeasure = 'BIC',
+                        minKnots_1d = c(1),
+                        maxKnots_1d = c(5),
+                        startKnots_1d = c(1),
+                        degree = c(2),
+                        maxIterations = 10,
+                        gaps = c(0))
+    
+    # run SALSA
+    fit <- rlang::try_fetch(
+      
+      suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
+        
+        runSALSA1D(
+          initialModel,
+          salsa1dlist,
+          varlist=c("hrs_since_sunrise"),
+          splineParams=NULL,
+          datain=newdat,
+          predictionData = filter(dt, !is.na(kmph)),
+          panelid = newdat$yearmonthday,
+          suppress.printout = TRUE)$bestModel
+      ),
+      
+      error = \(cnd){
+        # needed to handle unclosed connection in some error cases of runSALSA1D
+        if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
         logger.warn(
           paste0(
-            "      |x Aargh!! Speed-time model failed to fit due to convergence issues.\n",
-            "             |x Speed thresholds WON'T be considered in the behaviour classification of this track."
+            "      |x Ouch!! Something went wrong while fitting the model.\n",
+            "             |x `runSALSA1D()` returned the following error message:\n",
+            "             |x \"", conditionMessage(cnd), "\"\n",
+            "             |x Speed-time classification will not be applied to this track."
           ))
         return(NULL)
-      } else{
-        rlang::zap()
+      },
+      
+      # In addition, invalidate speed-time classification if model convergence issues arise
+      warning = \(cnd){
+        if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
+          if(in_parallel){
+            if(sink.number() > 2) sink()
+          }else{
+            if(sink.number() == 1) sink()
+          } 
+          logger.warn(
+            paste0(
+              "      |x Aargh!! Convergence issues found during model fitting.\n",
+              "             |x Speed-time classification will not be applied to this track."
+            ))
+          return(NULL)
+        } else{
+          rlang::zap()
+        }
       }
-    }
-  )
+    )
+  }
   
   
   if(!is_null(fit)){
