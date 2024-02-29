@@ -139,16 +139,23 @@ rFunction = function(data,
   ## Data Preparation ===========================================================
   
   logger.info("Initiate Data Preparation Steps")
-  
+
   
   ### Generate general variables  ------------------------------
 
   logger.info(" |- Generate general variables")
   
-  data %<>% dplyr::mutate(
-    ID = mt_track_id(.),
-    timestamp = mt_time(.)
-  )
+  data %<>% 
+    dplyr::mutate(
+      ID = mt_track_id(.),
+      timestamp = mt_time(.)
+    ) %>%
+    # drop events with missing timestamps
+    dplyr::filter(!is.na(timestamp)) %>%
+    # order by time within track
+    arrange(ID, timestamp)
+    # distinct(timestamp, .keep_all = TRUE)
+  
   
   # Add date label, day hours-since-midnight and hours-since-sunrise
   data %<>% 
@@ -157,8 +164,14 @@ rFunction = function(data,
       hourmin = lubridate::hour(timestamp_local) + 
         lubridate::minute(timestamp_local)/60 + 
         lubridate::second(timestamp_local)/3600,
-      hrs_since_sunrise = as.double(difftime(timestamp, sunrise_timestamp, units = "hour"))
-    ) 
+      hrs_since_sunrise = 
+        as.double(
+          difftime(
+            lubridate::with_tz(timestamp, lubridate::tz(sunrise_timestamp)), # ensures TZ consistency
+            sunrise_timestamp, 
+            units = "hour"
+          ))
+    )
   
   
   #' NOTE:`timediff_hrs`, `dist_m` & `kmph` are variables expected to provide
@@ -168,8 +181,6 @@ rFunction = function(data,
   #' been thinned by other in-between App. Therefore, to ensure accuracy, we
   #' always (re)generate these columns here.
   data %<>% 
-    arrange(mt_track_id(data), mt_time(data)) %>%
-    # distinct(timestamp, .keep_all = TRUE) %>%
     mutate(
       timediff_hrs = as.vector(mt_time_lags(., units = "hours")),
       kmph = as.vector(mt_speed(., units = "km/h")),
@@ -475,10 +486,10 @@ rFunction = function(data,
   #' location is greater the 97.5th percentile of the predicted stationary
   #' speeds at that time of the day (day-hours)
   
-  logger.info("[6] Performing speed-time classification")
+  logger.info("[6] Performing speed-given-time classification")
   
   #### [6.1] Fit Stationary Speed Vs day-hours model  ----------------
-  logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
+  logger.info(" |- Deriving thresholds for stationary-speed given hour-since-sunrise.")
   
   progressr::handlers("cli")
 
