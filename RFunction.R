@@ -650,6 +650,7 @@ rFunction = function(data,
     data %<>% dplyr::select(-any_of(
       c(
         "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "stationaryNotRoost", "cumtimestat", "kmphPI2.5",
+        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav"
       ) 
     ))
   }
@@ -913,10 +914,9 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
   
   #' Impose condition where fitting only performed if there is more than 10 days
   #' of data, otherwise data deemed insufficient to robustly describe the
-  #' relationship between stationary speeds and time-of-the-day (expressed as of
+  #' relationship between stationary speeds and time-of-the-day (expressed as
   #' hours-since-sunrise)
   if(n_days < 10){
-    
     logger.warn(
       paste0(
         "      |x Track data covers < 10 days. This is deemed insufficient to model speed-give-time robustly.\n", 
@@ -924,8 +924,20 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
       ))
     
     fit <- NULL
-    
   } else {
+    
+    #' Add disclaimer for tracks with more than 45 days, which currently will
+    #' comprise events that are not used in model fitting.
+    #' Going forward, maybe extend to separate 30days-based models (i.e.
+    #' 0-30days, 30-60days, ...), so that min 10 days requirement can be
+    #' employed? Or alternatively, add a 30-day period term to the model?
+    if(n_days > 45){
+      logger.warn(
+        paste0(
+          "      |x Track data covers > 45 days, while current modelling is constrained to the last 45 days in the data.\n", 
+          "           |x Speed-time classification still being applied but BEWARE: predictions on locations older than 45 days may be flawed."
+        ))
+    }
     
     newdat <- dt %>%
       dplyr::mutate(
@@ -935,7 +947,7 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
       dplyr::filter(
         !is.na(response),
         stationary == 1,
-        timestamp > (max(timestamp) - days(30))
+        timestamp > (max(timestamp) - days(45))
       )
     
     # ALSO what happens if more than 30 days data provided??
