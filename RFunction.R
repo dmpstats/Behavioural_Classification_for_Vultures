@@ -897,12 +897,18 @@ add_nonroost_stationary_cols <- function(data){
 #'   export them as App artifacts
 #' @param in_parallel logical, whether the function is being called inside a
 #'   parallel worker. This is required for managing sink connections
-#'   
+#' @param model_obj logical, whether to return the fitted model object.
+#' 
+#' @return  If `model_obj = TRUE`, a list with: (i) the input data with 3 extra
+#'   columns for the predicted values and 95% CIs and (ii) the fitted model
+#'   object. Otherwise, only the input data with model predictions.
 speed_time_model <- function(dt, 
                              pb = NULL, 
                              diag_plots = TRUE, 
                              in_parallel = TRUE, 
-                             void_non_converging = TRUE){
+                             void_non_converging = TRUE,
+                             model_obj = FALSE
+                             ){
   
   id <- mt_track_id(dt) |> unique() |> as.character()
   
@@ -1098,7 +1104,13 @@ speed_time_model <- function(dt,
     pb()  
   }
   
-  return(dt)
+  
+  if(model_obj){
+    return(list(dt = dt, fit = fit))
+  }else{
+    return(dt)  
+  }
+  
 }
 
 
