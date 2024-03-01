@@ -38,25 +38,20 @@ If altitude information is available, reclassification is performed. This requir
 
 <!-- 2.  Individual based behaviour will be used to ascertain if the behaviour at a given time of day is unusual. This is achieved by using a model for each individual based on speed and time of day to make predictions and locations within the lowest 5th percentile of predicted movement based on time of day will be reclassified as `Feeding`. An app will be published to create these individual models and the output object uploaded manually to the workflow to include it here. -->
 
+
+
+<!-- Perhaps add a Requirements Section, where dependency on Solar time App  would be clearly stated ???-->
+
 ### Input data
 
 Move2 location object
+
 
 ### Output data
 
 Move2 location object, with the following key columns in the event dataset:
 
-<!-- -   `hourmin`: the time of day provided as a double  -->
-
-<!-- -   `yearmonthday`: the date provided in `timestamp` with hyphens removed  -->
-
-<!-- -   `dist_m`: the distance travelled between consecutive locations  -->
-
-<!-- -   `kmph`: the speed between consecutive locations  -->
-
-<!-- -   `timediff_hrs`: the time difference between consecutive locations  -->
-
-- `behav`: the estimated behaviourat each given location
+- `behav`: the estimated behaviour at each given location
 
 - `RULE`: The classification rule determining the behaviour assigned to each given location
 
@@ -66,9 +61,12 @@ Move2 location object, with the following key columns in the event dataset:
 
 ### Artefacts
 
--   `behavsummary.csv` - A .csv object summarising the classification output. For each ID, the total number of locations assigned to each behavioural group (`Unknown, SFeeding, SResting, SRoosting, STravelling`). **NOTE:** Only one location should be classified as `Unknown` for each ID. If more than one location is classified as `Unknown`, please report this bug
+-   `behavsummary.csv` - A .csv object summarising the classification output. For each track/bird, the total number of locations assigned to each behavioural group (`SFeeding`, `SResting`, `SRoosting`, `STravelling`).
 
--   `birdtrack_(ID).png` - for each ID within the input data, a plot of the animal's movements (with behavioural classification overlaid) is created as an artefact
+- If Setting `Create Plots` is selected, for each track/bird ID whithin the input data:
+
+  1. `birdtrack_(track ID).png` - a plot of the animal's movements (with behavioural classification overlaid);
+  2. `speed_hrs_diagnostics - (track ID).png` - a set of diagnostic plots assessing the fitted model describing the stationary-speed given hours-since-sunrise relationship required for the speed-time classification step.
 
 
 
@@ -76,13 +74,16 @@ Move2 location object, with the following key columns in the event dataset:
 
 `Upper speed bound for Stationary Behaviour` (`travelcut`): Numeric, the speed (in km/h) beyond which this species is assumed to be travelling. Default is 3 km/h.
 
+`Altitude change threshold` (`altbound`): Numeric, the absolute change in altitude (in metres) beyond which a bird is assumed to have significant altitude change. For example, a threshold of 25m means that a bird whose altitude increases by over 25m is assumed to be `ascending`, and `descending` if its altitude decreases by over 25m. This setting is only used if column `altitude` is present in the input data.
+
 `Sunrise leeway` (`sunrise_leeway`): Integer, the number of minutes after (or before, if negative) that *daytime* is considered to begin. *Daytime* is the period in which stationary behaviour is **not** classified as *Roosting*. For example `Sunrise leeway = 10` means that the bird's roost is assumed to end 10 minutes *after* sunrise.
 
 `Sunset leeway` (`sunset_leeway`): Integer, the equivalent of `Sunrise leeway` for sunset, and determines what time *night-time,* or roosting hours, begin. Stationary behaviour after this time, and before the next determined *daytime*, is classified as *Roosting.*
 
-`Create Plots` (`create_plots`): Logical, select this option to generate a `birdtrack.png` plot artefact for each ID within the input data. See below for details.
+`Create Plots` (`create_plots`): Select this option to generate, as artefacts, bird-specific graphs with location plots of behaviourally-classified movements, and diagnostic plots for the stationary-speed given hours-since-sunrise model.
 
-`Altitude change threshold` (`altbound`): Numeric, the absolute change in altitude (in metres) beyond which a bird is assumed to have significant altitude change. For example, a threshold of 25m means that a bird whose altitude increases by over 25m is assumed to be `ascending`, and `descending` if its altitude decreases by over 25m. This setting is only used if column `altitude` is present in the input data.
+`Keep all generated columns` (`keepAllCols`): Select this option to keep all columns created during the classification process. We recommend that this is selected for debugging purposes only.
+
 
 
 
@@ -95,8 +96,8 @@ Move2 location object, with the following key columns in the event dataset:
 
 ### Null or error handling
 
--   Setting `Upper Speed Bound for Stationary Behaviour`: If less than zero or non-numeric, the input is returned with a warning
+-   Setting `Upper Speed Bound for Stationary Behaviour`: If less than zero, the input is returned with a warning.
 
--   Empty datasets are returned with a warning (there is nothing to classify)
+-   Empty datasets are returned with a warning (there is nothing to classify).
 
 <!-- -   If an individual has fewer than 10 associated locations within the input data, the second-stage classification is not performed. More data is required for accurate classification, and small datasets can cause inconsistencies during reclassification -->
