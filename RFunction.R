@@ -27,14 +27,22 @@ not_null <- Negate(is.null)
 # Main RFunction ====================================================================
 
 rFunction = function(data, 
-                     travelcut,
+                     travelcut = 3,
                      create_plots = TRUE,
                      sunrise_leeway = 0,
                      sunset_leeway = 0,
                      altbound = 25,
-                     keepAllCols = FALSE
-                     # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
-) {
+                     keepAllCols = FALSE) {
+  
+  
+  #' TODO (Desirables)
+  #' 
+  #'   - make use of 'dplyr::' consistent
+  #'   - Consolidate summary plots
+  #'   - drop "ID" and "timestamp" redefinition and use "mt_" functions instead
+  #'   - improve error messages with {rlang}
+  #'   - add timestamps to logger
+  
   
   ## Globals --------------------------------------
   ggplot2::theme_set(ggplot2::theme_bw())
@@ -43,7 +51,7 @@ rFunction = function(data,
   ## Validate Input Data --------------------------------------------
   
   logger.trace(paste0(
-    "Input data provided:  \n", 
+    "\nInput data provided:  \n", 
     "travelcut: ", toString(travelcut), "\n",
     "sunrise_leeway: ", toString(sunrise_leeway), "\n", 
     "sunset_leeway: ", toString(sunset_leeway), "\n",
@@ -59,9 +67,9 @@ rFunction = function(data,
   
   
   ### travelcut ----
-  if(travelcut <= 0 | !is.numeric(travelcut)) {
-    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
-    stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
+  if(travelcut <= 0) {
+    logger.fatal("Speed cut-off for travelling behavour must be > 0. Terminating App.")
+    stop("Invalid speed cut-off for travelling behavour (`travelcut`). Please provide values > 0.")
   }
   
   
@@ -70,9 +78,9 @@ rFunction = function(data,
   
   if("altitude" %in% colnames(data)){
     
-    if(!is.numeric(altbound)) {
-      logger.warn("`altbound` is non-numeric. Stopping computation - please check inputs.")
-      stop("Altitude change threshold (`altbound`) is non-numeric. Please check input settings.")
+    if(altbound < 0) {
+      logger.fatal("`altbound` must be >= 0. Terminating computation.")
+      stop("Invalid altitude change threshold (`altbound`). Please provide values >= 0.")
       
     } else if(altbound == 0){
       
@@ -104,12 +112,13 @@ rFunction = function(data,
   
   
   if ("timestamp_local" %!in% colnames(data)) {
+    logger.fatal(" |- `timestamp_local` is not comprised in input data. Terminating App execution.")
     stop(
       paste0(
         "Column `timestamp_local` is not comprised in input data. Local time is ",
-        "a fundamental requirement for the classification process. Please deploy ",
-        "the App 'Add Local and Solar Time' earlier in the Workflow to bind local ",
-        "time to the input dataset."),
+        "a fundamental requirement for the classification process.\n",   
+        "   Please deploy the App 'Add Local and Solar Time' earlier in the Workflow ",  
+        "to bind local time to the input dataset."),
       call. = FALSE
     )
   }else{
@@ -118,11 +127,11 @@ rFunction = function(data,
   
   
   if ("sunrise_timestamp" %!in% colnames(data) | "sunset_timestamp" %!in% colnames(data)) {
-    logger.fatal("`sunrise_timestamp` or `sunset timestamp` is not a column in the input data. Sunrise-sunset classification cannot be performed. Terminating - please use the 'Add Local and Solar Time' MoveApp in this workflow BEFORE this MoveApp")
+    logger.fatal("`sunrise_timestamp` and/or `sunset timestamp` columns are missing in the input data. Terminating App.")
     stop(
       paste0(
         "`sunrise_timestamp` and/or `sunset timestamp` are not a columns in the ",
-        "input data. Identification of night-time points is fundamental for the ",
+        "input data.\n   Identification of night-time points is fundamental for the ",
         "classification process. Please deploy the App 'Add Local and Solar Time' ",
         "earlier in the workflow to add the required columns."), 
       call. = FALSE
@@ -499,7 +508,6 @@ rFunction = function(data,
   future::plan("multisession", workers = future::availableCores(omit = 2))
 
   progressr::with_progress({
-
     # initiate progress signaler
     pb <- progressr::progressor(steps = mt_n_tracks(data))
 
@@ -507,7 +515,9 @@ rFunction = function(data,
       group_by(ID) |>
       dplyr::group_split() |>
       furrr::future_map(
-        .f = speed_time_model, pb = pb,
+        .f = ~speed_time_model(
+          .x, pb = pb, diag_plots = create_plots, void_non_converging = TRUE
+        ),
         .options = furrr_options(
           seed = TRUE,
           packages = c("move2", "sf", "MRSea", "dplyr", "lubridate",
@@ -523,7 +533,11 @@ rFunction = function(data,
   # data <- data |>
   #   group_by(ID) |>
   #   dplyr::group_split() |>
-  #   map(speed_time_model, pb = NULL, in_parallel = FALSE) |>
+  #   purrr::map(
+  #     .f = ~speed_time_model(
+  #       .x, pb = NULL, diag_plots = create_plots, void_non_converging = TRUE, 
+  #       in_parallel = FALSE)
+  #   ) |>
   #   mt_stack()
   
   
@@ -595,7 +609,7 @@ rFunction = function(data,
   
   ## Create plots, if selected ------------------------------------------------------
   
-  logger.info("Classification complete. Generating output plots")
+  logger.info("Classification complete. Generating app artifacts")
   if(create_plots == TRUE) {
     
     # create simple plot
@@ -639,8 +653,11 @@ rFunction = function(data,
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC",
-        "kmphCI2.5", "kmphPI2.5", "kmphpreds"
+        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", 
+        "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", 
+        "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", 
+        "cumtimestat_pctl", "cumtimestat_pctl_BC",
+        "kmphCI2.5", "kmphpreds"
       ) 
     ))
     
@@ -649,7 +666,6 @@ rFunction = function(data,
     logger.trace("Removing select nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "stationaryNotRoost", "cumtimestat", "kmphPI2.5",
         "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav"
       ) 
     ))
