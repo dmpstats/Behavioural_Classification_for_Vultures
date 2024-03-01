@@ -898,7 +898,11 @@ add_nonroost_stationary_cols <- function(data){
 #' @param in_parallel logical, whether the function is being called inside a
 #'   parallel worker. This is required for managing sink connections
 #'   
-speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRUE){
+speed_time_model <- function(dt, 
+                             pb = NULL, 
+                             diag_plots = TRUE, 
+                             in_parallel = TRUE, 
+                             void_non_converging = TRUE){
   
   id <- mt_track_id(dt) |> unique() |> as.character()
   
@@ -910,7 +914,7 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
   logger.info(paste0("   |> Fitting model for track ", id))
   
   # Check number of days covered in dataset
-  n_days <- difftime(max(dt$timestamp), min(dt$timestamp), units = "day") 
+  n_days <- round(difftime(max(dt$timestamp), min(dt$timestamp), units = "day"), 1)
   
   #' Impose condition where fitting only performed if there is more than 10 days
   #' of data, otherwise data deemed insufficient to robustly describe the
@@ -924,18 +928,20 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
       ))
     
     fit <- NULL
+    
   } else {
     
-    #' Add disclaimer for tracks with more than 45 days, which currently will
-    #' comprise events that are not used in model fitting.
-    #' Going forward, maybe extend to separate 30days-based models (i.e.
-    #' 0-30days, 30-60days, ...), so that min 10 days requirement can be
-    #' employed? Or alternatively, add a 30-day period term to the model?
-    if(n_days > 45){
+    #' Add disclaimer for tracks covering more than 5 days from the modelled
+    #' last 30 days, which will comprise events outside the scope of the fitted
+    #' model (i.e. the fitted speed-given-time relationship may not hold).
+    #' Going forward, we can extend to 30day-period models
+    #' (i.e. 0-30days, 30-60days, ...), so that min 10 days requirement can be
+    #' employed? Or alternatively, add a 30day-period term to the model?
+    if(n_days > 35){
       logger.warn(
         paste0(
-          "      |x Track data covers > 45 days, while current modelling is constrained to the last 45 days in the data.\n", 
-          "           |x Speed-time classification still being applied but BEWARE: predictions on locations older than 45 days may be flawed."
+          "      |x Track data covers ", n_days, " days, whereas current modelling is constrained to the last 30 days in the data.\n", 
+          "             |x Speed-time classification still being applied but BEWARE: predictions may be flawed on locations ealier than 30 days."
         ))
     }
     
@@ -947,15 +953,9 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
       dplyr::filter(
         !is.na(response),
         stationary == 1,
-        timestamp > (max(timestamp) - days(45))
+        timestamp > (max(timestamp) - days(30))
       )
     
-    # ALSO what happens if more than 30 days data provided??
-    #
-    # NOTE: Predicting to full dataset for convenience in data wrangling - i.e. no 
-    # post-processing required to combine predictions for stationary-only events 
-    # with the full data). No apparent cost in terms of computational speed
-    # Non-stationary events will be ignored in the subsequent classification step
     
     initialModel <- suppressWarnings(
       glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
@@ -1000,7 +1000,7 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
       
       # In addition, invalidate speed-time classification if model convergence issues arise
       warning = \(cnd){
-        if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
+        if(void_non_converging & conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
           if(in_parallel){
             if(sink.number() > 2) sink()
           }else{
@@ -1020,7 +1020,12 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
   }
   
   
-  if(!is_null(fit)){
+  if(not_null(fit)){
+    
+    # NOTE: Predicting to full dataset for convenience in data wrangling - i.e. no 
+    # post-processing required to combine predictions for stationary-only events 
+    # with the full data). No apparent cost in terms of computational speed
+    # Non-stationary events will be ignored in the subsequent classification step
     
     dt$kmphpreds <- predict(object = fit, newdata = dt) |> as.vector()
     
@@ -1063,8 +1068,12 @@ speed_time_model <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel = TRU
       
       p_diags <- (p_fit + p_acf) / (p_resids + p_obs_fit) / (p_mn_var + p_cmltv_rsd) + 
         patchwork::plot_annotation(title = paste0("Track ID: ", id)) &
-        ggplot2::theme_bw() & 
-        theme(legend.position = "top")
+        theme_bw() & 
+        theme(
+          legend.position = "top", 
+          legend.title = element_blank()
+        )
+        
       
       ggplot2::ggsave(
         filename = appArtifactPath(paste0("speed_hrs_diagnostics - ", id, ".png")),
@@ -1101,9 +1110,13 @@ plot_model_fit <- function(dt, fit){
   dt |> 
     as_tibble() |> 
     distinct(hrs_since_sunrise, .keep_all = TRUE) |> 
+    mutate(
+      ci_lbl = "95% Confidence Interval",
+      fitted_lbl = "Expected Value"
+    ) |> 
     ggplot(aes(x = hrs_since_sunrise)) +
-    geom_ribbon(aes(ymin = kmphCI2.5, ymax = kmphCI97.5), fill = "#80CBC4", alpha = 0.5) +
-    geom_line(aes(y = kmphpreds), linewidth = 1) +
+    geom_ribbon(aes(ymin = kmphCI2.5, ymax = kmphCI97.5, fill = ci_lbl), alpha = 0.5) +
+    geom_line(aes(y = kmphpreds, col = fitted_lbl), linewidth = 1) +
     geom_rug(sides = "b") +
     # add stationary points with speeds above the upper boundary of the 95% CI
     geom_point(
@@ -1111,10 +1124,12 @@ plot_model_fit <- function(dt, fit){
       aes(y = kmph),
       col= "red", alpha = 1/4, size = 1
     ) +
+    scale_fill_manual(values = "#90CAF9") +
+    scale_colour_manual(values = "black") +
     # add selected knots in fitted model
     geom_vline(
       xintercept = fit$splineParams[[2]]$knots, colour = "gray20", 
-      linetype = "dashed", linewidth = 0.6)
+      linetype = "dashed", linewidth = 0.5)
 } 
 
 
