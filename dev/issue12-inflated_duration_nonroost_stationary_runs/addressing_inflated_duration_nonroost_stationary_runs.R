@@ -16,9 +16,9 @@ test_dt$metadata
 
 theme_set(theme_minimal())
 
-
 source("src/common/logger.R")
 source("src/io/app_files.R")
+
 
 sel_cols <- c(
   "track", "timestamp", "sunrise_timestamp",  "sunset_timestamp", "yearmonthday", "timediff_hrs", 
@@ -59,8 +59,6 @@ compar_out <- imap(
       return_output = TRUE
     )}
 )
-
-write_rds(compar_out, file = "dev/issue12-inflated_duration_nonroost_stationary_runs/compar_out.rds")
 
 map(compar_out, pluck(4)) |> 
   list_rbind(names_to = "dataset") |> 

@@ -992,7 +992,7 @@ speed_time_model_sunrise <- function(dt, pb = NULL, diag_plots = TRUE, in_parall
   )
   
   
-  if(!is_null(fit)){
+  if(not_null(fit)){
     
     dt$kmphpreds <- predict(object = fit, newdata = dt) |> as.vector()
     

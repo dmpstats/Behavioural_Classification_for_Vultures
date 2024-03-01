@@ -138,7 +138,153 @@ map(compar_out, pluck(4)) |>
 
 
 
+# ------------------------------------------------------------------------------
 
+work_dt <- imap(
+  test_dt[names(test_dt) != "metadata"],
+  \(dt, dt_name){
+    
+    message(paste0("\nRunning App for dataset ", dt_name, "\n"))
+    
+    rFunction(
+      data = dt,
+      travelcut = 3,
+      create_plots = FALSE,
+      sunrise_leeway = 0,
+      sunset_leeway = 0,
+      altbound = 25,
+      keepAllCols = TRUE
+    )}
+)
+
+
+
+dt_animal <- work_dt$pan_afr %>%
+  mutate(ID = mt_track_id(.)) |>
+  filter(ID == "Lizzy")
+
+model_out <- speed_time_model(dt_animal)
+mod_out <- speed_time_model_diag(dt_animal)
+
+
+
+animal_dt <- rFunction(
+  data = test_dt$sa_vfa |> filter(track == "TAWNY_8891..deploy_id.2187458663."),
+  travelcut = 3,
+  create_plots = FALSE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = TRUE
+)
+
+mod_out <- speed_time_model_sunrise(animal_dt)
+mod_out <- speed_time_model(animal_dt)
+
+
+
+test_1 <- dt %>%
+  dplyr::mutate(
+    month = month(timestamp),
+    response = kmph + 0.00001
+  ) %>%
+  dplyr::filter(
+    !is.na(response),
+    stationary == 1,
+    timestamp > (max(timestamp) - days(30))
+  )
+
+runSALSA1D(
+  initialModel,
+  salsa1dlist,
+  varlist=c("hrs_since_sunrise"),
+  splineParams=NULL,
+  datain=test_1,
+  predictionData = filter(dt, !is.na(kmph)),
+  panelid = newdat$yearmonthday,
+  suppress.printout = TRUE)$bestModel
+
+
+test_2 <- dt %>%
+  dplyr::mutate(
+    month = month(timestamp),
+    response = kmph + 0.00001
+  ) %>%
+  dplyr::filter(
+    !is.na(response),
+    stationary == 1,
+    timestamp > (max(timestamp) - days(45))
+  )
+
+
+initialModel <- glm(response  ~ 1 , family = Gamma(link="log"), data = test_2)
+
+runSALSA1D(
+  initialModel,
+  salsa1dlist,
+  varlist=c("hrs_since_sunrise"),
+  splineParams=NULL,
+  datain=test_2,
+  predictionData = filter(dt, !is.na(kmph)),
+  panelid = newdat$yearmonthday,
+  suppress.printout = TRUE)$bestModel
+
+
+
+
+
+
+
+
+
+
+out <- rFunction(
+  data = test_dt$savahn, # test_dt$wb_zam_knd,
+  travelcut = 3,
+  create_plots = FALSE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = TRUE
+)
+
+
+out <- rFunction(
+  data = test_dt$nam_sop |> slice(1:1000), # test_dt$wb_zam_knd,
+  travelcut = 3,
+  create_plots = FALSE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = TRUE
+)
+
+
+out <- rFunction_diags(
+  data = test_dt$nam_sop, # test_dt$wb_zam_knd,
+  travelcut = 3,
+  create_plots = FALSE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = TRUE
+)
+
+
+source("RFunction.R")
+
+out_new <- rFunction(
+  data = test_dt$nam_sop, # test_dt$wb_zam_knd,
+  travelcut = 3,
+  create_plots = FALSE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = TRUE
+)
+
+
+summary(out_new$hrs_since_sunrise)
 
 
 
@@ -147,22 +293,6 @@ map(compar_out, pluck(4)) |>
  
 # # Generate test-sets specific for this task - i.e. run app to get the stationary status
 # 
-# work_dt <- imap(
-#   test_dt[names(test_dt) != "metadata"],
-#   \(dt, dt_name){
-#     
-#     message(paste0("\nRunning App for dataset ", dt_name, "\n"))
-#     
-#     rFunction_curr(
-#       data = dt,
-#       travelcut = 3,
-#       create_plots = FALSE,
-#       sunrise_leeway = 0,
-#       sunset_leeway = 0,
-#       altbound = 25,
-#       keepAllCols = TRUE
-#     )}
-# )
 # 
 # 
 # source("dev/issue13-consolidating_speedtime_modelling/RFunction_alt.R")

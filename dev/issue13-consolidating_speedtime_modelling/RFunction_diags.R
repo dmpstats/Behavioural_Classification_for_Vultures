@@ -991,7 +991,7 @@ speed_time_model_diag <- function(dt, pb = NULL, diag_plots = TRUE, in_parallel 
   )
   
   
-  if(!is_null(fit)){
+  if(not_null(fit)){
     
     dt$kmphpreds <- predict(object = fit, newdata = dt) |> as.vector()
     
