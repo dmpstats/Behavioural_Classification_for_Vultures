@@ -61,6 +61,7 @@ run_sdk <- function(data,
   new_app_config$travelcut <- travelcut
   new_app_config$create_plots <- create_plots
   new_app_config$sunrise_leeway <- sunrise_leeway
+  new_app_config$sunset_leeway <- sunset_leeway
   new_app_config$altbound <- altbound
   new_app_config$keepAllCols <- keepAllCols
   
