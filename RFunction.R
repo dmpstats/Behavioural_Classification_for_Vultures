@@ -38,7 +38,6 @@ rFunction = function(data,
   #' TODO (Desirables)
   #' 
   #'   - make use of 'dplyr::' consistent
-  #'   - Consolidate summary plots
   #'   - drop "ID" and "timestamp" redefinition and use "mt_" functions instead
   #'   - improve error messages with {rlang}
   #'   - add timestamps to logger
@@ -525,7 +524,6 @@ rFunction = function(data,
         )
       ) |>
       mt_stack()
-
   })
 
   future::plan("sequential")
@@ -613,33 +611,25 @@ rFunction = function(data,
   if(create_plots == TRUE) {
     
     # create simple plot
-    for (bird in unique(mt_track_id(data))) {
+    for (id in unique(mt_track_id(data))) {
       
-      # Create artefact
-      png(appArtifactPath(
-        paste0("birdtrack_", toString(bird), ".png")
-      ))
+      birddat <- filter_track_data(data, .track_id = id)
       
-      birddat <- data %>% 
-        filter_track_data(
-          .track_id = bird
+      birdplot <- birddat |> 
+        ggplot(aes(x = sf::st_coordinates(birddat)[, 1], y = sf::st_coordinates(birddat)[, 2]) ) +
+        geom_path(col = "gray80") +
+        geom_point(aes(colour = behav)) +
+        scale_color_brewer(palette = "Set1") +
+        labs(
+          title = paste0("Behaviour classification for track ID ", id),
+          x = "Easting", y = "Northing"
         )
       
-      birdplot <- ggplot(data = birddat, aes(x = sf::st_coordinates(birddat)[, 1], 
-                                             y = sf::st_coordinates(birddat)[, 2])) +
-        geom_path() +
-        geom_point(data = birddat, 
-                   aes(x = sf::st_coordinates(birddat)[, 1], 
-                       y = sf::st_coordinates(birddat)[, 2],
-                       colour = behav)) +
-        ggtitle(paste0("Behaviour classification of ID ", bird)) +
-        xlab("Easting") +
-        ylab("Northing")
-      print(birdplot)
-      
-      #Save as artefact
-      dev.off()
-      
+      ggsave(
+        file = appArtifactPath(paste0("birdtrack_", toString(id), ".png")),
+        height = 8,
+        width = 10
+      )
     }
   }
   
