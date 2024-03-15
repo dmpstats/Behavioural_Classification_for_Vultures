@@ -1081,25 +1081,45 @@ speed_time_model <- function(dt,
     if(diag_plots){
       
       p_fit <- plot_model_fit(dt, fit)
-      p_acf <- plot_acf(fit)
+      p_acf <- MRSea::runACF(newdat$yearmonthday, fit, suppress.printout = TRUE, printplot = FALSE)
+      #p_acf <- plot_acf(fit)
       p_resids <- plot_diagnostics(fit, plotting = "r", print = FALSE)
       p_obs_fit <- plot_diagnostics(fit, plotting = "f", print = FALSE)
       p_mn_var <- plotMeanVar(fit, print = FALSE, cut.bins = find_cut.bins(fit))
+      
       # Next graph involves model updating to more flexible predictor, so
-      # refitting brings new issues at times. Handling errors by skipping the plotting
+      # refitting brings new issues at times. Handling errors by skipping the plotting.
       p_cmltv_rsd <- tryCatch(
         plot_cmltv_resids(fit, varlist = "hrs_since_sunrise", variableonly = TRUE, print = FALSE),
         error = \(cnd) grid::textGrob('Cumulative Residuals Plot Not Available')
       )
       
-      p_diags <- (p_fit + p_acf) / (p_resids + p_obs_fit) / (p_mn_var + p_cmltv_rsd) + 
-        patchwork::plot_annotation(title = paste0("Track ID: ", id)) &
+      
+      # p_cmltv_rsd <- rlang::try_fetch(
+      #   plot_cmltv_resids(fit, varlist = "hrs_since_sunrise", variableonly = TRUE, print = FALSE),
+      #   error = \(cnd){
+      #     grid::textGrob('Cumulative Residuals Plot Not Available')
+      #   },
+      #   warning = \(cnd){
+      #     if(conditionMessage(cnd) == "glm.fit: algorithm did converge"){
+      #       rlang::cnd_muffle(cnd)
+      #       rlang::zap()
+      #     }else{
+      #       warning(conditionMessage(cnd), call. = FALSE)
+      #     }
+      #   }
+      # )
+      
+      p_diags <- (p_fit + p_resids) / (p_acf + p_obs_fit) / (p_mn_var + p_cmltv_rsd) + 
+        patchwork::plot_annotation(title = paste0("Track ID: ", id), tag_levels = 'A') &
         theme_bw() & 
         theme(
           legend.position = "top", 
-          legend.title = element_blank()
+          legend.title = element_blank(),
+          plot.title = element_text(size = 10),
+          plot.tag = element_text(size = 9)
         )
-        
+      
       
       ggplot2::ggsave(
         filename = appArtifactPath(paste0("speed_hrs_diagnostics - ", id, ".png")),
@@ -1165,30 +1185,30 @@ plot_model_fit <- function(dt, fit){
 } 
 
 
-#' /////////////////////////////////////////////////////////////////////////////////////////////
-# Adapted from https://stackoverflow.com/questions/17788859/acf-plot-with-ggplot2-setting-width-of-geom-bar
-plot_acf <- function(fit, alpha = 0.05){
-  
-  pears_resids <- residuals(fit, type="pearson")
-  acf_out <- acf(pears_resids, plot = FALSE)
-  acf_dt <- with(acf_out, tibble(lag, acf))
-  
-  # CI for alpha
-  lim1 <- qnorm((1 + (1 - alpha))/2)/sqrt(acf_out$n.used)
-  lim0 <- -lim1
-  
-  ggplot(data = acf_dt, aes(x = lag, y = acf)) +
-    geom_hline(aes(yintercept = 0)) +
-    geom_segment(aes(xend = lag, yend = 0)) +
-    labs(
-      y = "Autocorrelation in Pearson Residuals", 
-      #y = "ACF"
-    ) +
-    geom_hline(aes(yintercept = lim1), linetype = 2, color = 'blue') +
-    geom_hline(aes(yintercept = lim0), linetype = 2, color = 'blue')
-  
-}
-
+#' #' /////////////////////////////////////////////////////////////////////////////////////////////
+#' # Adapted from https://stackoverflow.com/questions/17788859/acf-plot-with-ggplot2-setting-width-of-geom-bar
+#' plot_acf <- function(fit, alpha = 0.05){
+#'   
+#'   pears_resids <- residuals(fit, type="pearson")
+#'   acf_out <- acf(pears_resids, plot = FALSE)
+#'   acf_dt <- with(acf_out, tibble(lag, acf))
+#'   
+#'   # CI for alpha
+#'   lim1 <- qnorm((1 + (1 - alpha))/2)/sqrt(acf_out$n.used)
+#'   lim0 <- -lim1
+#'   
+#'   ggplot(data = acf_dt, aes(x = lag, y = acf)) +
+#'     geom_hline(aes(yintercept = 0)) +
+#'     geom_segment(aes(xend = lag, yend = 0)) +
+#'     labs(
+#'       y = "Autocorrelation in Pearson Residuals", 
+#'       #y = "ACF"
+#'     ) +
+#'     geom_hline(aes(yintercept = lim1), linetype = 2, color = 'blue') +
+#'     geom_hline(aes(yintercept = lim0), linetype = 2, color = 'blue')
+#'   
+#' }
+#' 
 
 
 
@@ -1232,7 +1252,7 @@ plot_diagnostics <-function(model, plotting='b', save=FALSE, print = TRUE, label
       labs(
         x='Observed Values', 
         y='Fitted Values', 
-        subtitle=paste("Concordance correlation: ", 
+        title=paste("Concordance correlation: ", 
                        round(rc,4), "\nMarginal R-squared value: ", 
                        round(r2,4), sep="")
       ) +
