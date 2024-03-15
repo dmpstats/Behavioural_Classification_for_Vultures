@@ -952,8 +952,8 @@ speed_time_model <- function(dt,
     if(n_days > 35){
       logger.warn(
         paste0(
-          "      |x Track data covers ", n_days, " days, whereas current modelling is constrained to the last 30 days in the data.\n", 
-          "             |x Speed-time classification still being applied but BEWARE: predictions may be flawed on locations ealier than 30 days."
+          "      |! Track data covers ", n_days, " days, whereas current modelling is constrained to the last 30 days in the data.\n", 
+          "             |! Speed-time model still being fitted but BEWARE: predictions may be flawed on locations ealier than 30 days."
         ))
     }
     
@@ -973,19 +973,23 @@ speed_time_model <- function(dt,
       glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
     )
     
-    salsa1dlist <- list(fitnessMeasure = 'BIC',
-                        minKnots_1d = c(1),
-                        maxKnots_1d = c(5),
-                        startKnots_1d = c(1),
-                        degree = c(2),
-                        maxIterations = 10,
-                        gaps = c(0))
+    salsa1dlist <- list(
+      fitnessMeasure = 'BIC',
+      minKnots_1d = c(1),
+      maxKnots_1d = c(5),
+      startKnots_1d = c(1),
+      degree = c(2),
+      maxIterations = 10,
+      gaps = c(0),
+      splines = c("ns")
+    )
     
     # run SALSA
+    non_conv_warn <- FALSE
     fit <- rlang::try_fetch(
-      
+
       suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
-        
+
         runSALSA1D(
           initialModel,
           salsa1dlist,
@@ -996,7 +1000,7 @@ speed_time_model <- function(dt,
           panelid = newdat$yearmonthday,
           suppress.printout = TRUE)$bestModel
       ),
-      
+
       error = \(cnd){
         # needed to handle unclosed connection in some error cases of runSALSA1D
         if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
@@ -1009,26 +1013,36 @@ speed_time_model <- function(dt,
           ))
         return(NULL)
       },
-      
-      # In addition, invalidate speed-time classification if model convergence issues arise
+
+      # In addition, muffle warnings related with non-converging glm fits, which
+      # are dealt with next
       warning = \(cnd){
-        if(void_non_converging & conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
-          if(in_parallel){
-            if(sink.number() > 2) sink()
-          }else{
-            if(sink.number() == 1) sink()
-          } 
-          logger.warn(
-            paste0(
-              "      |x Aargh!! Convergence issues found during model fitting.\n",
-              "             |x Speed-time classification will not be applied to this track."
-            ))
-          return(NULL)
-        } else{
-          rlang::zap()
+        if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
+          non_conv_warn <<- TRUE
+          rlang::cnd_muffle(cnd)
         }
+        rlang::zap()
       }
     )
+    
+    # Handling non-converging warnings in model fitting. If sense check on 
+    # model term p-values fails (i.e. any nonsensical pvalues of < 1e-100),
+    # invalidate speed-time classification (when option `void_non_converging` is TRUE)
+    if(not_null(fit) & non_conv_warn == TRUE & void_non_converging == TRUE){
+      #browser()
+      fit_coeffs <- as.data.frame(summary(fit)$coefficients)
+      #bad_fit <- any(fit_coeffs[, "Std. Error"] > abs(fit_coeffs[, "Estimate"]))
+      bad_fit <- any(fit_coeffs[["Pr(>|t|)"]] < 1e-100)
+      if(bad_fit){
+        logger.warn(
+                  paste0(
+                    "      |x Aargh!! Convergence issues found during model fitting.\n",
+                    "             |x Speed-time classification will not be applied to this track."
+                  ))
+        fit <- NULL
+      }
+    }
+    
   }
   
   
