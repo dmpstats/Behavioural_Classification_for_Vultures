@@ -138,6 +138,53 @@ map(compar_out, pluck(4)) |>
 
 
 
+# Version comparison when non-convergence fitting issues are better handled and using 'ns' splines  -----------------
+source("dev/issue13-consolidating_speedtime_modelling/RFunction_sunrise.R")
+source("dev/issue13-consolidating_speedtime_modelling/RFunction_nonconv_ns.R")
+
+compar_out <- imap(
+  test_dt[names(test_dt) != "metadata"],
+  \(dt, dt_name){
+    
+    message(paste0("\nPerforming comparison for dataset ", dt_name, "\n"))
+    
+    compare_versions(
+      dt = dt,
+      f_old = rFunction_sunrise, 
+      f_new = rFunction_nonconv_ns, 
+      fun_new_label = "nonconv_ns", 
+      fun_old_label = "hrs_since_sunrise",
+      artifacts_path = "data/output/",
+      travelcut = 3,
+      create_plots = FALSE,
+      sunrise_leeway = 0,
+      sunset_leeway = 0,
+      altbound = 25,
+      keepAllCols = TRUE, 
+      return_output = TRUE
+    )}
+)
+
+
+map(compar_out, pluck(4)) |> 
+  list_rbind(names_to = "dataset") |> 
+  mutate(
+    pctg_change = round(pctg_change, 1),
+    change_sign = sign(pctg_change),
+    change_sign = case_when(
+      change_sign == 1 ~ "+",
+      change_sign == -1 ~ "-",
+      change_sign == 0 ~ ""
+    ),
+    change = glue::glue("{`hrs_since_sunrise`} -> {`nonconv_ns`} ({change_sign}{abs(pctg_change)}%)")
+  ) |> 
+  select(dataset, behav, change) |> 
+  pivot_wider(names_from = behav, values_from = change) |> 
+  kable(format = "markdown")
+
+
+
+
 # ------------------------------------------------------------------------------
 
 work_dt <- imap(

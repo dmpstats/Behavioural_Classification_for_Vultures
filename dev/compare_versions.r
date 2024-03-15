@@ -34,6 +34,7 @@ compare_versions <- function(dt,
         mutate(fun_version = fun_old_label)
       
       message("\nRunning new version...\n")
+      gc()
       
       out_new <- f_new(data = dt, ...) |> 
         as_tibble() |> 
