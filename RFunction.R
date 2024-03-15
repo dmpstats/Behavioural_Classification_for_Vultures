@@ -6,7 +6,6 @@ library('ggplot2')
 library('data.table')
 library('sf')
 library('units')
-library('stringr')
 library('tidyr') 
 library('MRSea')
 library("purrr")
@@ -28,10 +27,10 @@ not_null <- Negate(is.null)
 
 rFunction = function(data, 
                      travelcut = 3,
-                     create_plots = TRUE,
+                     altbound = 25,
                      sunrise_leeway = 0,
                      sunset_leeway = 0,
-                     altbound = 25,
+                     create_plots = TRUE,
                      keepAllCols = FALSE) {
   
   
@@ -82,7 +81,6 @@ rFunction = function(data,
       stop("Invalid altitude change threshold (`altbound`). Please provide values >= 0.")
       
     } else if(altbound == 0){
-      
       logger.warn(
         paste0(" |- Altitude threshold (`altbound`) is set to 0m, and thus ",
                "ANY change is altitude will be considered as ascencing/descending ",
@@ -90,6 +88,7 @@ rFunction = function(data,
       )
     }  
   } 
+  
   
   ### 'leeway' inputs ----
   if(is.null(sunrise_leeway)) {
