@@ -65,9 +65,13 @@ rFunction = function(data,
   
   
   ### travelcut ----
-  if(travelcut <= 0) {
-    logger.fatal("Speed cut-off for travelling behavour must be > 0. Terminating App.")
-    stop("Invalid speed cut-off for travelling behavour (`travelcut`). Please provide values > 0.")
+  if(is.null(travelcut)){
+    logger.fatal("Missing input value for stationary speed upper-bound (`travelcut`). Terminating App.")
+    stop("Missing input value for stationary speed upper-bound (`travelcut`). Please provide a valid input.")
+    
+  } else if(travelcut <= 0) {
+    logger.fatal("Speed upper-bound for stationary behavour (`travelcut`) must be > 0. Terminating App.")
+    stop("Invalid speed upper-bound for stationary behavour (`travelcut`). Please provide values > 0.")
   }
   
   
@@ -76,7 +80,11 @@ rFunction = function(data,
   
   if("altitude" %in% colnames(data)){
     
-    if(altbound < 0) {
+    if(is.null(altbound)){
+      logger.fatal("Missing input value for altitude change threshold (`altbound`). Terminating App.")
+      stop("Missing input value for altitude change threshold (`altbound`). Please provide a valid input.")
+      
+    } else if(altbound < 0) {
       logger.fatal("`altbound` must be >= 0. Terminating computation.")
       stop("Invalid altitude change threshold (`altbound`). Please provide values >= 0.")
       
