@@ -165,13 +165,10 @@ rFunction = function(data,
     # distinct(timestamp, .keep_all = TRUE)
   
   
-  # Add date label, day hours-since-midnight and hours-since-sunrise
+  # Add date label, day hours-since-midnight and hours-since-sunrise (i.e. a proxy for day-light intensity)
   data %<>% 
     mutate(
-      yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""),
-      hourmin = lubridate::hour(timestamp_local) + 
-        lubridate::minute(timestamp_local)/60 + 
-        lubridate::second(timestamp_local)/3600,
+      yearmonthday = gsub("-", "", substr(timestamp_local, 1, 10)),
       hrs_since_sunrise = 
         as.double(
           difftime(

@@ -3,7 +3,7 @@
     {
       "id": "travelcut",
       "name": "Upper speed bound for 'stationary' behaviour (km/h)",
-      "description": "Insert the upper speed cutoff for behaviour to be classified as 'stationary'. ",
+      "description": "Insert the upper speed cutoff for behaviour to be classified as 'stationary'.",
       "defaultValue": 3,
       "type": "DOUBLE"
     },
@@ -68,9 +68,6 @@
       },
       {
         "name": "units"
-      },
-      {
-        "name": "stringr"
       },
       {
         "name": "tidyr"
