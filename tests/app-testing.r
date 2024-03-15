@@ -14,13 +14,12 @@ app_key <- get_app_key()
 
 # Read (encrypted) input datasets for testing
 test_dt <- secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key))
+test_dt$metadata
+
 
 # thinning gaia and nam dataset for 5mins gap for faster testing. 
 test_dt$gaia <- mt_filter_per_interval(test_dt$gaia, unit = "2 min")
 test_dt$nam_sop <- mt_filter_per_interval(test_dt$nam_sop, unit = "2 min")
-
-
-test_dt$metadata
 
 
 # ---------------------------------------- #
@@ -32,7 +31,7 @@ set_interactive_app_testing()
 out_cur <- rFunction(
   data =  test_dt$sa_vfa, #test_dt$wb_zam_knd, #test_dt$gaia, #test_dt$savahn, test_dt$sa_vfa test_dt$nam_sop
   travelcut = 3,
-  create_plots = FALSE,
+  create_plots = TRUE,
   sunrise_leeway = 0,
   sunset_leeway = 0,
   altbound = 25,
@@ -45,7 +44,7 @@ count(out_cur, behav)
 out <- rFunction(
   data = test_dt$gaia,
   travelcut = 3,
-  create_plots = FALSE,
+  create_plots = TRUE,
   sunrise_leeway = 0,
   sunset_leeway = 0,
   altbound = 25,
@@ -77,7 +76,7 @@ out <- rFunction(
 out <- rFunction(
   data = test_dt$wb_zam_knd,
   travelcut = 3,
-  create_plots = FALSE,
+  create_plots = TRUE,
   sunrise_leeway = 0,
   sunset_leeway = 0,
   altbound = 25,
@@ -174,19 +173,31 @@ run_sdk(
 
 
 
+
 # ---------------------------------------- #
 # ----    Speed-time model testing     ----
 # ---------------------------------------- #
 
+
 track_dt <- rFunction(
-  data = test_dt$sa_vfa |> filter(track == "Bateleur_8889..deploy_id.2145558383."),
+  data = test_dt$wcs,
   travelcut = 3,
-  create_plots = FALSE,
+  create_plots = TRUE,
   sunrise_leeway = 0,
   sunset_leeway = 0,
   altbound = 25,
   keepAllCols = FALSE
 )
 
-mod_out <- speed_time_model(track_dt, model_obj = TRUE)
-mod_out$fit
+mod_out <- speed_time_model(track_dt |> filter(track == "AW196500..deploy_id.2023814797."), model_obj = TRUE, void_non_converging = TRUE)
+mod_out <- speed_time_model(track_dt |> filter(track == "AW196499..deploy_id.2023814814."), model_obj = TRUE, void_non_converging = TRUE)
+
+track_dt |> filter(track == "AW196499..deploy_id.2023814814.") |> 
+  filter(stationary == 1) |> 
+  ggplot(aes(y = kmph, x = hrs_since_sunrise )) +
+  geom_point()
+
+
+
+
+
