@@ -1,7 +1,7 @@
 # Expected classification outcome has not changed
 
     structure(list(behav = c("95%" = "SFeeding", "95%" = "SResting", 
-    "95%" = "SRoosting", "95%" = "STravelling"), n = c(205L, 623L, 
+    "95%" = "SRoosting", "95%" = "STravelling"), n = c(202L, 626L, 
     276L, 519L)), class = c("tbl_df", "tbl", "data.frame"), row.names = c(NA, 
     -4L), sf_column = "geometry", agr = structure(c(track = NA_integer_, 
     timestamp = NA_integer_, temperature = NA_integer_, heading = NA_integer_, 
@@ -49,7 +49,7 @@
 ---
 
     structure(list(behav = c("95%" = "SFeeding", "95%" = "SResting", 
-    "95%" = "SRoosting", "95%" = "STravelling"), n = c(138L, 972L, 
+    "95%" = "SRoosting", "95%" = "STravelling"), n = c(146L, 964L, 
     599L, 1673L)), class = c("tbl_df", "tbl", "data.frame"), row.names = c(NA, 
     -4L), sf_column = "geometry", agr = structure(c(track = NA_integer_, 
     timestamp = NA_integer_, temperature = NA_integer_, heading = NA_integer_, 
@@ -115,7 +115,7 @@
 
 ---
 
-    structure(c(SFeeding = 260L, SResting = 331L, SRoosting = 489L, 
+    structure(c(SFeeding = 263L, SResting = 328L, SRoosting = 489L, 
     STravelling = 797L), dim = 4L, dimnames = structure(list(c("SFeeding", 
     "SResting", "SRoosting", "STravelling")), names = ""), class = "table")
 

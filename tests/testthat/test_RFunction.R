@@ -8,7 +8,8 @@ library(httr2)
 if(rlang::is_interactive()){
   library(testthat)
   source("tests/app-testing-helpers.r")
-  set_interactive_testing()
+  set_interactive_app_testing()
+  app_key <- get_app_key()
 }
 
 test_sets <- httr2::secret_read_rds(test_path("data/unit_test_sets.rds"), key = I(app_key))
@@ -33,7 +34,7 @@ test_that("Input validation is working", {
       data = test_sets$sa_vfa_15days, 
       travelcut = -7, 
       create_plots = FALSE), 
-    regexp = "Invalid speed cut-off for travelling behavour \\(`travelcut`\\). Please provide values > 0."
+    regexp = "Invalid speed upper-bound for stationary behavour \\(`travelcut`\\). Please provide values > 0."
   )
   
   expect_error(
@@ -41,7 +42,7 @@ test_that("Input validation is working", {
       data = test_sets$sa_vfa_15days, 
       travelcut = 0, 
       create_plots = FALSE), 
-    regexp = "Invalid speed cut-off for travelling behavour \\(`travelcut`\\). Please provide values > 0."
+    regexp = "Invalid speed upper-bound for stationary behavour \\(`travelcut`\\). Please provide values > 0."
   )
   
   
