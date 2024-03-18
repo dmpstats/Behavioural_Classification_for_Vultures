@@ -1,0 +1,410 @@
+---
+title: "Updating stationary points based on change in altitude classification"
+format: 
+  gfm:
+    df-print: tibble
+    toc: true
+      
+filters:
+  - include-code-files
+---
+
+
+
+```{r, setup}
+#| include: false
+#| warning: true
+#| message: true
+
+library(move2)
+library(httr2)
+library(purrr)
+library(dplyr)
+library(readr)
+library(knitr)
+
+
+# Helpers
+source("../../tests/app-testing-helpers.r")
+source("compare_versions.r")
+
+# get App secret key for decrypting test dataset
+app_key <- get_app_key()
+
+source("../../RFunction.R")
+source("../../src/common/logger.R")
+source("../../src/io/app_files.R")
+
+source("RFunction_roost_reloc.R")
+source("RFunction_old.R")
+
+
+options(pillar.width = 500)
+```
+
+## Introduction
+
+Here we document the impact in the behaviour classification process from
+enforcing the update of the stationary status after the altitude classification
+step [2]. This is related to issue
+[#11](https://github.com/dmpstats/Behavioural_Classification_for_Vultures/issues/11).
+
+As explained in the issue page, implementing this update implies the following
+structural changes to the classification code[^1]:
+
+1. Include an update on `stationary` status after the altitude classification
+step [2], turning any newly classified `behav == "STravelling"` event as
+`stationary == 0` [^2].
+
+2. Relocate roosting-site identification somewhere after [2], otherwise the
+roosting identification will be outdated. Roost-siting code was placed as
+a pre-step of the roost-site classification step [4] [^3].
+
+
+3. Speed-time model also modified to fit to `stationary == 1` entries
+(instead of those `kmph < travelcut`) and relocated as a pre-step of the
+speed-model classification step [6] (i.e. after the altitude classification
+step)
+
+
+Next, we look into the impact of each of the above changes in terms of the final
+distribution of behaviour across the considered categories.
+
+
+[^1]: Changes to original code implemented in temporary files
+[RFunction_roost_reloc.R](RFunction_roost_reloc.R) for testing and documentation
+purposes
+
+[^2]:
+```{.r include="RFunction_roost_reloc.R" start-line=356 end-line=394}
+```
+
+[^3]: 
+```{.r include="RFunction_roost_reloc.R" start-line=440 end-line=469}
+```
+
+
+#### Upload test datasets
+
+```{r, data upload}
+#| cache: true
+
+# Read (encrypted) input datasets for testing
+test_dt <- secret_read_rds("../../data/raw/vult_test_data.rds", key = I(app_key))
+```
+
+```{r}
+test_dt$metadata |> knitr::kable()
+```
+
+
+
+## Update stationary status and relocate roosting site identification
+
+Running previous (`RFunction_old()`) and modified (`RFunction_roost_reloc()`)
+versions of the App and compare results in term of:
+
+- `stnry_vs_behav`: two-way comparison for events annotated to each behaviour 
+  relative to their stationary status
+- `classif_contrast`: Percentage change between the two code versions
+
+
+
+```{r}
+#| eval: false
+
+# thinning gaia dataset for 1min gaps
+test_dt$gaia <- mt_filter_per_interval(test_dt$gaia, unit = "1 min")
+
+dt_names <- test_dt$metadata |> 
+  filter(alt_avail == TRUE) |> 
+  pull(object_name) 
+
+roost_reloc <- imap(
+  test_dt[dt_names],
+  \(dt, dt_name){
+    
+    message(paste0("\nPerforming comparison for dataset ", dt_name, "\n"))
+    
+    compare_versions(
+      dt = dt,
+      f_old = rFunction_old, 
+      f_new = rFunction_roost_reloc, 
+      fun_new_label = "roost_reloc",
+      artifacts_path = "../../data/output/",
+      travelcut = 3,
+      create_plots = FALSE,
+      sunrise_leeway = 0,
+      sunset_leeway = 0,
+      altbound = 25,
+      keepAllCols = FALSE
+    )}
+)
+
+write_rds(roost_reloc, file = "roost_reloc.rds")
+```
+
+```{r}
+#| include: false
+roost_reloc <- read_rds("roost_reloc.rds")
+```
+
+
+In terms of behaviour versus stationary status, the old version was attributing
+a substantial number of travelling events as stationary (coded as `1`). That
+stopped happening after the stationary status was updated after the altitude
+classification step.
+
+```{r}
+map(roost_reloc, pluck(1))
+```
+
+Regarding the impact on the number of events attributed to each behaviour class,
+relocating the roosting site yielded increases of 4-20% and 7-26% in,
+respectively, Feeding and Resting events. These shifts came at the cost of
+reductions ranging 10-49% in Roosting events. There was no impact in the
+incidence of travelling events with the change in classification process.
+
+
+```{r}
+#| tbl-cap: "*Percentage change in number of events classified in each behaviour category, per dataset, after updating stationary status based on altitude classification and relocating roosting site identification*"
+
+map(roost_reloc, pluck(2)) |> 
+  list_rbind(names_to = "dataset") |> 
+  select(dataset, behav, pctg_change) |> 
+  pivot_wider(names_from = dataset, values_from = pctg_change) |> 
+  knitr::kable(digits = 1)
+
+```
+
+
+So, let's have a closer look under the hood to vizualise how the alterations to
+the code covered in this section (i.e. update stationary based on altitude and
+relocation of roosting site derivation) produced the differences reported in the
+last table.
+
+We focus on the Namibian dataset (`nam_sop`) as it showed to greatest percentage
+change between the competing versions, which is mainly explained by the
+higher temporal resolution of the dataset.
+
+::: {.callout-note}
+Needed to resort to screenshoots to vizualize the changes, because printing
+the outputs as `tibble` or `kable` would be vizualization hard (wasn't able to
+reformat the outputs either). Code underpinning the screenshots is in [this script](auxiliary code to vizualize changes between versions.R)
+:::
+
+
+#### Case 1: modified code delays start of roosting group
+
+As seen below, by updating the stationary status to `0` for `Travelling` events
+identified from altitude change, the `roostgroup == 2` is trimmed down
+substantially in the modified version of the code, resulting in a reduction of
+Feeding-to-Roosting re-classification in step [4]. In fact, it seems reasonable
+to have those events classified as resting since they are all occurring way
+before sunset.
+
+Furthermore, one of the retained Resting events goes on to be classified as a
+Feeding event.
+
+![Original version](screenshot_reloc_old_1.png)
+*Original version*
+
+
+![Roosting relocated version](screenshot_reloc_new_1.png)
+*Roosting relocated version*
+
+
+#### Case 2: modified code shrinks the threshold for unusual non-Roosting stationary time
+
+Changes to code increases number of Resting events available to describe the
+empirical distribution of non-roosting stationary runs, increasing the accuracy
+of threshold value (95th percentile) above which stationary cumulative time is
+indicative of feeding. In this case, it shortens the threshold value and
+increases the number of Resting events being classified as Feeding.
+
+
+![](screenshot_reloc_old_2.png)
+*Original version*
+
+
+![](screenshot_reloc_new_2.png)
+*Roosting relocated version*
+
+
+
+#### Case 3: modified code anticipates the end of the roosting group
+
+Analogously to Case 1 above, the altered code ends the `roostgroup == 8` much,
+earlier than the original code by updating the stationary status from the change
+of altitude, resulting in a large number of Feeding events not being
+re-classified as roosting. Some of these go on to get classified as Feeding
+events in classification step [7].
+
+
+![](screenshot_reloc_old_3.png)
+*Original version*
+
+
+![](screenshot_reloc_new_3.png)
+*Roosting relocated version*
+
+
+
+## Update stationary status and use it to fit speed-time model (instead of `travelcut`)
+
+Running previous (`RFunction_old()`) and modified (`RFunction_spdtm_reloc()`)
+versions of the App and compare results in term of percentage change in
+number of events allocated each behaviour class (`classif_contrast`).
+
+
+```{r}
+#| eval: false 
+#| code-fold: true
+
+source("RFunction_spdtm_reloc.r")
+source("RFunction_old.R")
+
+# thinning gaia dataset for 1min gaps
+test_dt$gaia <- mt_filter_per_interval(test_dt$gaia, unit = "1 min")
+
+dt_names <- test_dt$metadata |> 
+  filter(alt_avail == TRUE) |> 
+  pull(object_name) 
+
+speedtime_reloc <- imap(
+  test_dt[dt_names],
+  \(dt, dt_name){
+    
+    message(paste0("\nPerforming comparison for dataset ", dt_name, "\n"))
+    
+    compare_versions(
+      dt = dt,
+      f_old = rFunction_old, 
+      f_new = rFunction_spdtm_reloc, 
+      fun_new_label = "speedtime_reloc",
+      artifacts_path = "../../data/output/",
+      travelcut = 3,
+      create_plots = FALSE,
+      sunrise_leeway = 0,
+      sunset_leeway = 0,
+      altbound = 25,
+      keepAllCols = FALSE
+    )}
+)
+
+write_rds(speedtime_reloc, file = "speedtime_reloc.rds")
+```
+
+
+```{r}
+#| include: false
+speedtime_reloc <- read_rds("speedtime_reloc.rds")
+```
+
+The impact of the code alteration in the classification outputs is restricted to
+the incidence of Resting and Feeding events, with the modified version yielding
+an increase of 2 - 29% in events classified as Feeding, at the cost of a 1-6%
+reduction in Resting events.
+
+
+```{r}
+#| tbl-cap: "*Percentage change in number of events classified in each behaviour category, per dataset, after updating stationary status based on altitude classification and fitting the speed-time model to stationary events.*"
+#| code-fold: true
+
+map(speedtime_reloc, pluck(2)) |> 
+  list_rbind(names_to = "dataset") |> 
+  select(dataset, behav, pctg_change) |> 
+  pivot_wider(names_from = dataset, values_from = pctg_change) |> 
+  knitr::kable(digits = 1)
+```
+
+
+The following output snippets from each code version illustrate the common
+observed changes when the speed-time model is fitted to stationary events (after
+update in altitude classification). In essence, when events reclassified as
+Travelling in the altitude classification step [2] were excluded from the model
+fitting, resulting estimates of expected stationary-speeds given
+hours-since-midnight tend to be lower than those obtained under the original
+model.
+
+
+![](screenshot_speedtime_old_1.png)
+*Original version*
+
+
+![](screenshot_speedtime_new_1.png)
+*Stationary speed-time model version*
+
+
+Looking at the distribution of speeds below `travelcut` split between travelling
+and non-travelling (from the altitude classification step), it becomes apparent
+that altitude-based travelling events tend to (relatively) display higher speeds
+than non-travelling events, which explains the higher CIs observed in the
+original code version. Therefore, excluding altitude-based travelling events
+with speeds below `travelcut` from model fitting leads to an increase of events
+with speeds above the 95% CI, resulting in a larger number of Resting events being
+re-classified as Feeding events.
+
+<img src = "hist_speed_below_travelcut_travel_vs_nontravel.png" width = "70%">
+
+
+## All changes combined
+
+Finally, we look at changes to the classification results when all code
+modifications are implemented.
+
+
+
+```{r}
+#| eval: false 
+#| code-fold: true
+
+source("rFunction_all_inc.R")
+source("RFunction_old.R")
+
+dt_names <- test_dt$metadata |> 
+  filter(alt_avail == TRUE) |> 
+  pull(object_name) 
+
+all_inc <- imap(
+  test_dt[dt_names],
+  \(dt, dt_name){
+    
+    message(paste0("\nPerforming comparison for dataset ", dt_name, "\n"))
+    
+    compare_versions(
+      dt = dt,
+      f_old = rFunction_old, 
+      f_new = rFunction_all_inc, 
+      fun_new_label = "all_inc",
+      artifacts_path = "../../data/output/",
+      travelcut = 3,
+      create_plots = FALSE,
+      sunrise_leeway = 0,
+      sunset_leeway = 0,
+      altbound = 25,
+      keepAllCols = FALSE
+    )}
+)
+
+write_rds(all_inc, file = "all_inc.rds")
+```
+
+
+```{r}
+#| include: false
+all_inc <- read_rds("all_inc.rds")
+```
+
+
+```{r}
+#| tbl-cap: "*Percentage change in number of events classified in each behaviour category, per dataset, after updating stationary status based on altitude classification followed by (i) relocating roost site idenfication and (ii) fitting the speed-time model to stationary events*."
+#| code-fold: true
+
+map(all_inc, pluck(2)) |> 
+  list_rbind(names_to = "dataset") |> 
+  select(dataset, behav, pctg_change) |> 
+  pivot_wider(names_from = dataset, values_from = pctg_change) |> 
+  knitr::kable(digits = 1)
+
+```
