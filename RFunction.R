@@ -650,8 +650,7 @@ rFunction = function(data,
         "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", 
         "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", 
         "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", 
-        "cumtimestat_pctl", "cumtimestat_pctl_BC",
-        "kmphCI2.5", "kmphpreds"
+        "cumtimestat_pctl", "kmphCI2.5", "kmphpreds"
       ) 
     ))
     
@@ -849,7 +848,7 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
 #' Relevant added columns 
 #'  - `cumtimestat`: cumulative time spent, up to each location, in a run of
 #'  non-roosting stationary time-points. 0's attributed to locations that are
-#'  not part of a stationary run#'  
+#'  not part of a stationary run  
 #'  - `dayRunThresh`: 95th percentile of stationary run durations, per bird  
 add_nonroost_stationary_cols <- function(data){
   
@@ -874,7 +873,7 @@ add_nonroost_stationary_cols <- function(data){
     group_by(ID) %>%
     mutate(
       # cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
-      cumtimestat_pctl = 1 - ecdf(cumtimestat)(cumtimestat) 
+      cumtimestat_pctl = ifelse(all(is.na(cumtimestat)), NA, 1 - ecdf(cumtimestat)(cumtimestat))
     )
   
   
