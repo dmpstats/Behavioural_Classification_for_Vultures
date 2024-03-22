@@ -373,3 +373,29 @@ mod_out <- speed_time_model(track_dt |> filter(track == "A234556..deploy_id.2153
 
 mod_out <- speed_time_model(track_dt |> filter(track == "X163116Z..deploy_id.2388610874"), model_obj = TRUE, void_non_converging = TRUE)
 # not enough data
+
+
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#  TANZANIA full test ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+tanz_dt <- readRDS(file = "C:\\Users\\lindesay\\University of St Andrews\\MLM_LSHjointwork - Documents\\research\\NCZoo\\Clustering_Callum\\data\\outputdata\\1)Combined_standardised_TZ_11012024.rds")
+
+set_interactive_app_testing()
+
+track_dt <- rFunction(
+  data = tanz_dt,
+  travelcut = 3,
+  create_plots = TRUE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = FALSE
+)
+
+debugonce(speed_time_model)
+mod_out <- speed_time_model(track_dt |> filter(track == "C181261"), model_obj = TRUE, void_non_converging = TRUE)
