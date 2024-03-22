@@ -979,39 +979,42 @@ speed_time_model <- function(dt,
       for(i in 1:nrow(cutdataf)){
         dt$day30window <- ifelse(between(dt$timestamp, cutdataf$start[i], cutdataf$end[i]), cutdataf$cut[i], dt$day30window)
       }  
+      
+      # check that each window has more than 10 days
+      # merge with previous or next window
+      # keep going till all windows have >10 days
+      flag <- 1
+      while(flag==1){
+        daycheck <- dt %>% 
+          as_tibble() %>%
+          group_by(day30window) %>% 
+          summarise(n = n(), 
+                    ndays = length(unique(yearmonthday)),
+                    mindate = first(timestamp),
+                    maxdate = last(timestamp)
+          ) %>%
+          left_join(., rename(cutdataf, day30window = cut)) %>%
+          mutate(mergeid = ifelse(mindate - start < end - maxdate, -1,1),
+                 newday30window = case_when(
+                   (ndays < 10 & mergeid == -1) ~ lag(day30window, n=1),
+                   (ndays < 10 & mergeid == 1) ~ lead(day30window, n=1),
+                   .default = day30window))
+        
+        dt <- left_join(dt, select(daycheck, day30window, newday30window)) %>%
+          select(-day30window)%>%
+          rename(day30window = newday30window)
+        
+        flagcheck <- dt %>% 
+          group_by(day30window) %>% 
+          summarise(ndays = length(unique((yearmonthday))))
+        flag <- ifelse(any(flagcheck$ndays<10), 1, 0)
+      }
+      
     }else{
       dt$day30window <- 1
     }
     
-    # check that each window has more than 10 days
-    # merge with previous or next window
-    # keep going till all windows have >10 days
-    flag <- 1
-    while(flag==1){
-      daycheck <- dt %>% 
-        as_tibble() %>%
-        group_by(day30window) %>% 
-        summarise(n = n(), 
-                  ndays = length(unique(yearmonthday)),
-                  mindate = first(timestamp),
-                  maxdate = last(timestamp)
-        ) %>%
-        left_join(., rename(cutdataf, day30window = cut)) %>%
-        mutate(mergeid = ifelse(mindate - start < end - maxdate, -1,1),
-               newday30window = case_when(
-                 (ndays < 10 & mergeid == -1) ~ lag(day30window, n=1),
-                 (ndays < 10 & mergeid == 1) ~ lead(day30window, n=1),
-                 .default = day30window))
     
-      dt <- left_join(dt, select(daycheck, day30window, newday30window)) %>%
-        select(-day30window)%>%
-        rename(day30window = newday30window)
-      
-      flagcheck <- dt %>% 
-        group_by(day30window) %>% 
-        summarise(ndays = length(unique((yearmonthday))))
-      flag <- ifelse(any(flagcheck$ndays<10), 1, 0)
-    }
     
     
     
