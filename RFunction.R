@@ -504,6 +504,8 @@ rFunction = function(data,
   logger.info(" |- Deriving thresholds for stationary-speed given hour-since-sunrise.")
   
   progressr::handlers("cli")
+  
+  #browser()
 
   #' setting parallel processing using availableCores() to set # workers.
   #' {future} imports that function from {parallelly}, which  is safe to use in
@@ -919,6 +921,8 @@ speed_time_model <- function(dt,
                              model_obj = FALSE
                              ){
   
+  #browser()
+  
   id <- mt_track_id(dt) |> unique() |> as.character()
   
   if(length(id) > 1){
@@ -930,15 +934,16 @@ speed_time_model <- function(dt,
   
   # Check number of days covered in dataset
   n_days <- round(difftime(max(dt$timestamp), min(dt$timestamp), units = "day"), 1)
+  n_datadays <- length(unique(dt$yearmonthday))
   
   #' Impose condition where fitting only performed if there is more than 10 days
   #' of data, otherwise data deemed insufficient to robustly describe the
   #' relationship between stationary speeds and time-of-the-day (expressed as
   #' hours-since-sunrise)
-  if(n_days < 10){
+  if(n_datadays < 10){
     logger.warn(
       paste0(
-        "      |x Track data covers < 10 days. This is deemed insufficient to model speed-give-time robustly.\n", 
+        "      |x Track data reported on < 10 days. This is deemed insufficient to model speed-give-time robustly.\n", 
         "             |x Speed-time classification will not be applied to this track."
       ))
     
@@ -952,13 +957,32 @@ speed_time_model <- function(dt,
     #' Going forward, we can extend to 30day-period models
     #' (i.e. 0-30days, 30-60days, ...), so that min 10 days requirement can be
     #' employed? Or alternatively, add a 30day-period term to the model?
-    if(n_days > 35){
+    if(n_days > 60){
       logger.warn(
         paste0(
           "      |! Track data covers ", n_days, " days, whereas current modelling is constrained to the last 30 days in the data.\n", 
           "             |! Speed-time model still being fitted but BEWARE: predictions may be flawed on locations ealier than 30 days."
         ))
     }
+    
+    cycles <- as.numeric(floor(n_days/30))
+    if(cycles == 0) cycles <- 1
+    if(cycles > 1){
+      cutdata <- max(dt$timestamp)
+      for(c in 1:(cycles-1)){
+        cutdata <- c(cutdata, cutdata[c] - days(30))
+      }
+      cutdata <- c(cutdata, min(dt$timestamp))
+      cutdataf <- data.frame(cut = 1:cycles, start = cutdata[length(cutdata):2], end = cutdata[(length(cutdata)-1):1])
+      
+      dt$day30window <- NA
+      for(i in 1:nrow(cutdataf)){
+        dt$day30window <- ifelse(between(dt$timestamp, cutdataf$start[i], cutdataf$end[i]), cutdataf$cut[i], dt$day30window)
+      }  
+    }else{
+      dt$day30window <- 1
+    }
+    
     
     newdat <- dt %>%
       dplyr::mutate(
@@ -967,8 +991,8 @@ speed_time_model <- function(dt,
       ) %>%
       dplyr::filter(
         !is.na(response),
-        stationary == 1,
-        timestamp > (max(timestamp) - days(30))
+        stationary == 1#,
+        #timestamp > (max(timestamp) - days(30))
       )
     
     #browser()
@@ -1042,6 +1066,20 @@ speed_time_model <- function(dt,
                     "             |x Speed-time classification to be tried using log-Gaussian approach."
                   ))
         fit <- NULL
+      }else{
+        if(length(unique(dt$day30window))>1){
+          fit.int <- update(fit, . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots,  Boundary.knots = splineParams[[2]]$bd):as.factor(day30window))
+          BICfits <- c(BIC(fit), BIC(fit.int))
+          bicid <- which(BICfits == min(BICfits))
+          if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
+            fit <- fit.int
+            logger.warn(
+              paste0(
+                "      |x Interaction Model performs best \n",
+                "             |x "
+              ))
+          }  
+        }
       }
     }
     
@@ -1116,6 +1154,20 @@ speed_time_model <- function(dt,
               "             |x Speed-time classification will not be applied to this track."
             ))
           fit <- NULL
+        }else{
+          if(length(unique(dt$day30window))>1){
+            fit.int <- update(fit, . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots,  Boundary.knots = splineParams[[2]]$bd):as.factor(day30window))
+            BICfits <- c(BIC(fit), BIC(fit.int))
+            bicid <- which(BICfits == min(BICfits))
+            if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
+              fit <- fit.int
+              logger.warn(
+                paste0(
+                  "      |x Interaction Model performs best \n",
+                  "             |x "
+                ))
+            }  
+          }
         }
       }
       
@@ -1240,14 +1292,17 @@ speed_time_model <- function(dt,
 #' /////////////////////////////////////////////////////////////////////////////////////////////
 plot_model_fit <- function(dt, fit){
   
+  int <- ifelse(length(grep("day30window", fit$call)) ==1, TRUE, FALSE)
+  
   dt |> 
     as_tibble() |> 
     distinct(hrs_since_sunrise, .keep_all = TRUE) |> 
     mutate(
       ci_lbl = "95% Confidence Interval",
-      fitted_lbl = "Expected Value"
+      fitted_lbl = "Expected Value",
+      int = ifelse(int, day30window, 1)
     ) |> 
-    ggplot(aes(x = hrs_since_sunrise)) +
+    ggplot(aes(x = hrs_since_sunrise, group=int)) +
     geom_ribbon(aes(ymin = kmphCI2.5, ymax = kmphCI97.5, fill = ci_lbl), alpha = 0.5) +
     geom_line(aes(y = kmphpreds, col = fitted_lbl), linewidth = 1) +
     geom_rug(sides = "b") +
