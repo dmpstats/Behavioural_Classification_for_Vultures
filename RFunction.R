@@ -533,17 +533,17 @@ rFunction = function(data,
   })
 
   future::plan("sequential")
-  
+  # 
   # data <- data |>
   #   group_by(ID) |>
   #   dplyr::group_split() |>
   #   purrr::map(
   #     .f = ~speed_time_model(
-  #       .x, pb = NULL, diag_plots = create_plots, void_non_converging = TRUE, 
+  #       .x, pb = NULL, diag_plots = create_plots, void_non_converging = TRUE,
   #       in_parallel = FALSE)
   #   ) |>
   #   mt_stack()
-  
+
   
   #### [6.2] Apply speed-time rule  ----------------
   logger.info(" |- Apply speed-time rule")
@@ -983,6 +983,37 @@ speed_time_model <- function(dt,
       dt$day30window <- 1
     }
     
+    # check that each window has more than 10 days
+    # merge with previous or next window
+    # keep going till all windows have >10 days
+    flag <- 1
+    while(flag==1){
+      daycheck <- dt %>% 
+        as_tibble() %>%
+        group_by(day30window) %>% 
+        summarise(n = n(), 
+                  ndays = length(unique(yearmonthday)),
+                  mindate = first(timestamp),
+                  maxdate = last(timestamp)
+        ) %>%
+        left_join(., rename(cutdataf, day30window = cut)) %>%
+        mutate(mergeid = ifelse(mindate - start < end - maxdate, -1,1),
+               newday30window = case_when(
+                 (ndays < 10 & mergeid == -1) ~ lag(day30window, n=1),
+                 (ndays < 10 & mergeid == 1) ~ lead(day30window, n=1),
+                 .default = day30window))
+    
+      dt <- left_join(dt, select(daycheck, day30window, newday30window)) %>%
+        select(-day30window)%>%
+        rename(day30window = newday30window)
+      
+      flagcheck <- dt %>% 
+        group_by(day30window) %>% 
+        summarise(ndays = length(unique((yearmonthday))))
+      flag <- ifelse(any(flagcheck$ndays<10), 1, 0)
+    }
+    
+    
     
     newdat <- dt %>%
       dplyr::mutate(
@@ -1068,18 +1099,21 @@ speed_time_model <- function(dt,
         fit <- NULL
       }else{
         if(length(unique(dt$day30window))>1){
-          fit.int <- update(fit, . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots,  Boundary.knots = splineParams[[2]]$bd):as.factor(day30window))
-          BICfits <- c(BIC(fit), BIC(fit.int))
-          bicid <- which(BICfits == min(BICfits))
-          if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
-            fit <- fit.int
-            logger.warn(
-              paste0(
-                "      |x Interaction Model performs best \n",
-                "             |x "
-              ))
-          }  
-        }
+          fit.int <- try(update(fit, . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots,  Boundary.knots = splineParams[[2]]$bd):as.factor(day30window)), silent= TRUE)
+          if(!inherits(fit.int, "try-error")){
+            BICfits <- c(BIC(fit), BIC(fit.int))
+            bicid <- which(BICfits == min(BICfits))
+            if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
+              fit <- fit.int
+              logger.warn(
+                paste0(
+                  "      |x Interaction Model performs best \n",
+                  "             |x "
+                ))
+            }
+          } # end try-error loop
+            
+        } # end interaction loop
       }
     }
     
@@ -1156,18 +1190,21 @@ speed_time_model <- function(dt,
           fit <- NULL
         }else{
           if(length(unique(dt$day30window))>1){
-            fit.int <- update(fit, . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots,  Boundary.knots = splineParams[[2]]$bd):as.factor(day30window))
-            BICfits <- c(BIC(fit), BIC(fit.int))
-            bicid <- which(BICfits == min(BICfits))
-            if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
-              fit <- fit.int
-              logger.warn(
-                paste0(
-                  "      |x Interaction Model performs best \n",
-                  "             |x "
-                ))
-            }  
-          }
+            fit.int <- try(update(fit, . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots,  Boundary.knots = splineParams[[2]]$bd):as.factor(day30window)), silent= TRUE)
+            if(!inherits(fit.int, "try-error")){
+              BICfits <- c(BIC(fit), BIC(fit.int))
+              bicid <- which(BICfits == min(BICfits))
+              if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
+                fit <- fit.int
+                logger.warn(
+                  paste0(
+                    "      |x Interaction Model performs best \n",
+                    "             |x "
+                  ))
+              }
+            } # end try-error loop
+            
+          } # end interaction loop
         }
       }
       
