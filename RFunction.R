@@ -995,9 +995,11 @@ speed_time_model <- function(dt,
           ) %>%
           left_join(., rename(cutdataf, day30window = cut)) %>%
           mutate(mergeid = ifelse(mindate - start < end - maxdate, -1,1),
+                 lagcol = lag(day30window, n=1),
+                 leadcol = lead(day30window, n=1),
                  newday30window = case_when(
-                   (ndays < 10 & mergeid == -1) ~ lag(day30window, n=1),
-                   (ndays < 10 & mergeid == 1) ~ lead(day30window, n=1),
+                   (ndays < 10 & mergeid == -1) ~ ifelse(is.na(lagcol), leadcol, lagcol),
+                   (ndays < 10 & mergeid == 1) ~ ifelse(is.na(leadcol), lagcol, leadcol),
                    .default = day30window))
         
         dt <- left_join(dt, select(daycheck, day30window, newday30window)) %>%
