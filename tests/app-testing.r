@@ -382,13 +382,25 @@ mod_out <- speed_time_model(track_dt |> filter(track == "X163116Z..deploy_id.238
 #  TANZANIA full test ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-tanz_dt <- readRDS(file = "C:\\Users\\lindesay\\University of St Andrews\\MLM_LSHjointwork - Documents\\research\\NCZoo\\Clustering_Callum\\data\\outputdata\\1)Combined_standardised_TZ_11012024.rds")
+tanz_dt2 <- readRDS(file = "C:\\Users\\lindesay\\University of St Andrews\\MLM_LSHjointwork - Documents\\research\\NCZoo\\Clustering_Callum\\data\\rawdata\\Kendall_and_WCS_combine__Workflow_Product_Retriever__2024-03-25_12-58-03.rds")
 
 set_interactive_app_testing()
 
+for(i in 1:length(unique(tanz_dt2$individual_name_deployment_id))){
+  
+  track_dt <- rFunction(
+    data = filter(tanz_dt2, individual_name_deployment_id==unique(tanz_dt2$individual_name_deployment_id)[i]),
+    travelcut = 3,
+    create_plots = TRUE,
+    sunrise_leeway = 0,
+    sunset_leeway = 0,
+    altbound = 25,
+    keepAllCols = FALSE
+  )
+}
+
 track_dt <- rFunction(
-  data = tanz_dt,
+  data = filter(tanz_dt2),
   travelcut = 3,
   create_plots = TRUE,
   sunrise_leeway = 0,
@@ -397,5 +409,62 @@ track_dt <- rFunction(
   keepAllCols = FALSE
 )
 
+
+tanz_dt <- readRDS(file = "C:\\Users\\lindesay\\University of St Andrews\\MLM_LSHjointwork - Documents\\research\\NCZoo\\Clustering_Callum\\data\\outputdata\\1)Combined_standardised_TZ_11012024.rds")
+
+set_interactive_app_testing()
+
+track_dt <- rFunction(
+  data = filter(tanz_dt),
+  travelcut = 3,
+  create_plots = TRUE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = FALSE
+)
+
+
+
+
 debugonce(speed_time_model)
 mod_out <- speed_time_model(track_dt |> filter(track == "C181261"), model_obj = TRUE, void_non_converging = TRUE)
+
+tanz_dt_sub <- tanz_dt %>%
+  filter(track=="A181267") %>% 
+  filter(timestamp > max(timestamp)- days(100))
+
+track_dt_sub <- rFunction(
+  data = tanz_dt_sub,
+  travelcut = 3,
+  create_plots = TRUE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = FALSE
+)
+
+birdplot_sub <- track_dt_sub |> 
+  ggplot(aes(x = sf::st_coordinates(track_dt_sub)[, 1], y = sf::st_coordinates(track_dt_sub)[, 2]) ) +
+  geom_path(col = "gray80") +
+  geom_point(aes(colour = behav)) +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    title = paste0("Behaviour classification for track ID "),
+    x = "Easting", y = "Northing"
+  )
+
+track_dt_full <- filter(track_dt, timestamp > max(timestamp)- days(100))
+
+birdplot1 <- track_dt_full |> 
+  ggplot(aes(x = sf::st_coordinates(track_dt_full)[, 1], y = sf::st_coordinates(track_dt_full)[, 2]) ) +
+  geom_path(col = "gray80") +
+  geom_point(aes(colour = behav)) +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    title = paste0("Behaviour classification for track ID "),
+    x = "Easting", y = "Northing"
+  )
+
+table(track_dt_full$behav)
+table(track_dt_sub$behav)

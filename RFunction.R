@@ -505,11 +505,12 @@ rFunction = function(data,
   
   progressr::handlers("cli")
   
-  #browser()
+ # browser()
 
   #' setting parallel processing using availableCores() to set # workers.
   #' {future} imports that function from {parallelly}, which  is safe to use in
   #' container environments (e.g. Docker)
+
   future::plan("multisession", workers = future::availableCores(omit = 2))
 
   progressr::with_progress({
@@ -533,7 +534,7 @@ rFunction = function(data,
   })
 
   future::plan("sequential")
-  # 
+
   # data <- data |>
   #   group_by(ID) |>
   #   dplyr::group_split() |>
@@ -622,20 +623,41 @@ rFunction = function(data,
       birddat <- filter_track_data(data, .track_id = id)
       
       birdplot <- birddat |> 
-        ggplot(aes(x = sf::st_coordinates(birddat)[, 1], y = sf::st_coordinates(birddat)[, 2]) ) +
+        ggplot(aes(x = sf::st_coordinates(birddat)[, 1]/1000, y = sf::st_coordinates(birddat)[, 2]/1000) ) +
         geom_path(col = "gray80") +
         geom_point(aes(colour = behav)) +
         scale_color_brewer(palette = "Set1") +
         labs(
           title = paste0("Behaviour classification for track ID ", id),
-          x = "Easting", y = "Northing"
-        )
+          x = "Easting (km)", y = "Northing (km)"
+        ) + 
+        coord_equal()
       
       ggsave(
         file = appArtifactPath(paste0("birdtrack_", toString(id), ".png")),
-        height = 8,
+        height = 10,
         width = 10
       )
+      
+      # birdplot2 <- birddat |>
+      #   mutate(xc = sf::st_coordinates(birddat)[, 1],
+      #          yc = sf::st_coordinates(birddat)[, 2]) |>
+      #   filter(behav != "STravelling") |>
+      #   ggplot(aes(x = xc, y = yc) ) +
+      #   geom_path(col = "gray80") +
+      #   geom_point(aes(colour = behav)) +
+      #   scale_color_brewer(palette = "Set1") +
+      #   labs(
+      #     title = paste0("Behaviour classification for track ID ", id),
+      #     x = "Easting", y = "Northing"
+      #   ) + 
+      #   coord_equal()
+      # 
+      # ggsave(
+      #   file = appArtifactPath(paste0("birdtrack_notravel_", toString(id), ".png")),
+      #   height = 10,
+      #   width = 10
+      # )
     }
   }
   
@@ -921,7 +943,7 @@ speed_time_model <- function(dt,
                              model_obj = FALSE
                              ){
   
-  #browser()
+ # browser()
   
   id <- mt_track_id(dt) |> unique() |> as.character()
   
@@ -957,13 +979,7 @@ speed_time_model <- function(dt,
     #' Going forward, we can extend to 30day-period models
     #' (i.e. 0-30days, 30-60days, ...), so that min 10 days requirement can be
     #' employed? Or alternatively, add a 30day-period term to the model?
-    if(n_days > 60){
-      logger.warn(
-        paste0(
-          "      |! Track data covers ", n_days, " days, whereas current modelling is constrained to the last 30 days in the data.\n", 
-          "             |! Speed-time model still being fitted but BEWARE: predictions may be flawed on locations ealier than 30 days."
-        ))
-    }
+    
     
     cycles <- as.numeric(floor(n_days/30))
     if(cycles == 0) cycles <- 1
@@ -984,33 +1000,50 @@ speed_time_model <- function(dt,
       # merge with previous or next window
       # keep going till all windows have >10 days
       flag <- 1
+     
       while(flag==1){
-        daycheck <- dt %>% 
+        
+        daycheck <- dt %>%
           as_tibble() %>%
-          group_by(day30window) %>% 
-          summarise(n = n(), 
+          group_by(day30window) %>%
+          summarise(n = n(),
                     ndays = length(unique(yearmonthday)),
                     mindate = first(timestamp),
                     maxdate = last(timestamp)
           ) %>%
-          left_join(., rename(cutdataf, day30window = cut)) %>%
-          mutate(mergeid = ifelse(mindate - start < end - maxdate, -1,1),
-                 lagcol = lag(day30window, n=1),
-                 leadcol = lead(day30window, n=1),
-                 newday30window = case_when(
-                   (ndays < 10 & mergeid == -1) ~ ifelse(is.na(lagcol), leadcol, lagcol),
-                   (ndays < 10 & mergeid == 1) ~ ifelse(is.na(leadcol), lagcol, leadcol),
-                   .default = day30window))
+          left_join(cutdataf, by = c("day30window" = "cut")) %>%
+          mutate(
+            # end time of previous window 
+            #(`default` set so that 1st window always merges to 2nd window)
+            end_prev = lag(end, default = as.POSIXct("2000-01-01 00:00:00")),
+            # start time of next window 
+            #(`default` set so that last window always merges to penultimate window)
+            start_next = lead(start, default = as.POSIXct("2222-01-01 00:00:00")),
+            # set up potential ids to merge to 
+            mergeid = ifelse((mindate - end_prev) < (start_next - maxdate), lag(day30window), lead(day30window))
+          )
         
-        dt <- left_join(dt, select(daycheck, day30window, newday30window)) %>%
-          select(-day30window)%>%
-          rename(day30window = newday30window)
+        # 1st window with less than 10 days
+        under10wind <- filter(daycheck, ndays < 10) |> first()
         
+        if(nrow(under10wind)>0){
+          dt <- dt |>
+            mutate(day30window = ifelse(day30window  == under10wind$day30window, under10wind$mergeid, day30window))
+        }
+        
+        # merge time windows by overwriting to merge window id
         flagcheck <- dt %>% 
           group_by(day30window) %>% 
           summarise(ndays = length(unique((yearmonthday))))
+        
         flag <- ifelse(any(flagcheck$ndays<10), 1, 0)
       }
+      
+      logger.warn(
+          paste0(
+            "      | Track data covers ", n_days, " days.\n", 
+            "             | Models fitted to both ", nrow(flagcheck) , " windows or the full set of days."
+          ))
       
     }else{
       dt$day30window <- 1

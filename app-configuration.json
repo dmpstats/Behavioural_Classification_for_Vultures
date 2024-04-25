@@ -1,8 +1,8 @@
 {
   "travelcut": 3,
   "altbound": 20,
-  "sunrise_leeway": 0,
-  "sunset_leeway": 0,
+  "sunrise_leeway": -15,
+  "sunset_leeway": 15,
   "create_plots": true,
   "keepAllCols": false
 }
