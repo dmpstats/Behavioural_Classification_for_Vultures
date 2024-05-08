@@ -508,7 +508,8 @@ rFunction = function(data,
   #' setting parallel processing using availableCores() to set # workers.
   #' {future} imports that function from {parallelly}, which  is safe to use in
   #' container environments (e.g. Docker)
-  future::plan("multisession", workers = future::availableCores(omit = 2))
+  #future::plan("multisession", workers = future::availableCores(omit = 2))
+  future::plan("cluster", workers = future::availableCores(omit = 2))
 
   progressr::with_progress({
     # initiate progress signaler
@@ -799,6 +800,7 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
     )
   ) %>% dplyr::select(-c("temptime", "morning", "evening", "closest", "sunrise_difference", "sunset_difference"))
   
+  
   # Shortcut for calculating night-distances:
   # Filter dataset to only the marked final/first point
   # Bind distance using mt_distance and keep only overnight distances
@@ -1028,23 +1030,39 @@ speed_time_model <- function(dt,
       }
     )
     
-    # Handling non-converging warnings in model fitting. If sense check on 
-    # model term p-values fails (i.e. any nonsensical pvalues of < 1e-100),
-    # invalidate speed-time classification (when option `void_non_converging` is TRUE)
-    if(not_null(fit) & non_conv_warn == TRUE & void_non_converging == TRUE){
-      #browser()
-      fit_coeffs <- as.data.frame(summary(fit)$coefficients)
-      #bad_fit <- any(fit_coeffs[, "Std. Error"] > abs(fit_coeffs[, "Estimate"]))
-      bad_fit <- any(fit_coeffs[["Pr(>|t|)"]] < 1e-100)
-      if(bad_fit){
+    # Handling non-converging warnings in model fitting - check on `converged`
+    # flag in model object.
+    #' Invalidate model fit, and thus speed-time classification if model failed
+    #' to converge
+    if(not_null(fit) & non_conv_warn & void_non_converging){
+      if(!fit$converged){
         logger.warn(
-                  paste0(
-                    "      |x Aargh!! Convergence issues found during model fitting.\n",
-                    "             |x Speed-time classification will not be applied to this track."
-                  ))
+          paste0(
+            "      |x Aargh!! Model fitting failed to converge.\n",
+            "             |x Speed-time classification will not be applied to this track."
+          ))
         fit <- NULL
       }
     }
+    
+      
+    # # Handling non-converging warnings in model fitting. If sense check on 
+    # # model term p-values fails (i.e. any nonsensical pvalues of < 1e-100),
+    # # invalidate speed-time classification (when option `void_non_converging` is TRUE)
+    # if(not_null(fit) & non_conv_warn == TRUE & void_non_converging == TRUE){
+    #   
+    #   fit_coeffs <- as.data.frame(summary(fit)$coefficients)
+    #   #bad_fit <- any(fit_coeffs[, "Std. Error"] > abs(fit_coeffs[, "Estimate"]))
+    #   bad_fit <- any(fit_coeffs[["Pr(>|t|)"]] < 1e-100)
+    #   if(bad_fit){
+    #     logger.warn(
+    #       paste0(
+    #         "      |x Aargh!! Convergence issues found during model fitting.\n",
+    #         "             |x Speed-time classification will not be applied to this track."
+    #       ))
+    #     fit <- NULL
+    #   }
+    # }
     
   }
   
@@ -1112,6 +1130,7 @@ speed_time_model <- function(dt,
       #     }
       #   }
       # )
+      
       
       p_diags <- (p_fit + p_resids) / (p_acf + p_obs_fit) / (p_mn_var + p_cmltv_rsd) + 
         patchwork::plot_annotation(title = paste0("Track ID: ", id), tag_levels = 'A') &

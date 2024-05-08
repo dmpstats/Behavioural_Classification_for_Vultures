@@ -117,7 +117,6 @@ out <- rFunction(
 
 
 
-
 # ---------------------------------------- #
 # ----    Automated Unit testing        ----
 # ---------------------------------------- #
@@ -173,11 +172,9 @@ run_sdk(
 
 
 
-
 # ---------------------------------------- #
 # ----    Speed-time model testing     ----
 # ---------------------------------------- #
-
 
 track_dt <- rFunction(
   data = test_dt$wcs,
@@ -189,15 +186,36 @@ track_dt <- rFunction(
   keepAllCols = FALSE
 )
 
-mod_out <- speed_time_model(track_dt |> filter(track == "AW196500..deploy_id.2023814797."), model_obj = TRUE, void_non_converging = TRUE)
-mod_out <- speed_time_model(track_dt |> filter(track == "AW196499..deploy_id.2023814814."), model_obj = TRUE, void_non_converging = TRUE)
 
-track_dt |> filter(track == "AW196499..deploy_id.2023814814.") |> 
-  filter(stationary == 1) |> 
-  ggplot(aes(y = kmph, x = hrs_since_sunrise )) +
-  geom_point()
+mod_out <- speed_time_model(
+  dt = track_dt |> filter(track == "AW196500..deploy_id.2023814797."), 
+  model_obj = TRUE, 
+  void_non_converging = TRUE)
+
+mod_out <- speed_time_model(
+  dt = track_dt |> filter(track == "AW196499..deploy_id.2023814814."), 
+  model_obj = TRUE, 
+  void_non_converging = TRUE)
 
 
 
 
+
+
+track_dt <- rFunction(
+  data = test_dt$wb_zam_knd,
+  travelcut = 3,
+  create_plots = TRUE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = FALSE
+)
+
+
+mod_out <- speed_time_model(track_dt |> filter(track == "A33506..deploy_id.1935590052."), model_obj = TRUE, void_non_converging = TRUE)
+
+mod_out <- speed_time_model(track_dt |> filter(track == "A234556..deploy_id.2153340562."), model_obj = TRUE, void_non_converging = TRUE)
+
+mod_out <- speed_time_model(track_dt |> filter(track == "A116514..deploy_id.1935590050."), model_obj = TRUE, void_non_converging = TRUE)
 
