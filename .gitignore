@@ -41,4 +41,5 @@ dev/issue11-update_stationary_altitude/issue11-update_stationary_altitude_cache/
 databehavsummary.csv
 Rplots.pdf
 data/raw/weirdone.rds
-data/raw/weirdone.rds
+.birdtrack_*
+.speed_hrs_diagnostics*
