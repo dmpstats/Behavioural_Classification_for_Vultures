@@ -6,7 +6,7 @@ library(purrr)
 library(dplyr)
 library(readr)
 library(knitr)
-library(ggplot)
+library(ggplot2)
 
 source("tests/app-testing-helpers.r")
 source("dev/issue11-update_stationary_altitude/compare_versions.r")
