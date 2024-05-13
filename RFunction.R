@@ -18,6 +18,7 @@ library("patchwork")
 library("splines")
 library("rlang")
 library("grid")
+library("sandwich") # potential undisclosed dependency of MRSea
 
 `%!in%` <- Negate(`%in%`)
 not_null <- Negate(is.null)
