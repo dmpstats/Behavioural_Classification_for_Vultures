@@ -18,7 +18,7 @@ library("patchwork")
 library("splines")
 library("rlang")
 library("grid")
-library("sandwich") # potential undisclosed dependency of MRSea
+library("sandwich") # undisclosed dependency of MRSea
 
 `%!in%` <- Negate(`%in%`)
 not_null <- Negate(is.null)
@@ -920,24 +920,22 @@ add_nonroost_stationary_cols <- function(data){
 
 
 #' /////////////////////////////////////////////////////////////////////////////////////////////
-#' Fit stationary-speed given decimal day-hours, for one single track
+#' Fit stationary-speed given decimal hours-since-sunrise, for one single track
 #' 
 #' @param dt a move2 object for one single track
 #' @param pb a Progressor Function generated via `progressr::progressor` to
 #'   signal updates
 #' @param diag_plots logical, whether to generate model diagnostic plots and
 #'   export them as App artifacts
-#' @param in_parallel logical, whether the function is being called inside a
-#'   parallel worker. This is required for managing sink connections
 #' @param model_obj logical, whether to return the fitted model object.
 #' 
 #' @return  If `model_obj = TRUE`, a list with: (i) the input data with 3 extra
 #'   columns for the predicted values and 95% CIs and (ii) the fitted model
 #'   object. Otherwise, only the input data with model predictions.
+#'   
 speed_time_model <- function(dt, 
                              pb = NULL, 
                              diag_plots = TRUE, 
-                             in_parallel = TRUE, 
                              void_non_converging = TRUE,
                              model_obj = FALSE
                              ){
@@ -965,20 +963,15 @@ speed_time_model <- function(dt,
     logger.warn(
       paste0(
         "      |x Track data reported on < 10 days. This is deemed insufficient to model speed-give-time robustly.\n", 
-        "             |x Speed-time classification will not be applied to this track."
+        "             |i Speed-time classification will not be applied to this track."
       ))
     
     fit <- NULL
     
   } else {
     
-    #' Add disclaimer for tracks covering more than 5 days from the modelled
-    #' last 30 days, which will comprise events outside the scope of the fitted
-    #' model (i.e. the fitted speed-given-time relationship may not hold).
-    #' Going forward, we can extend to 30day-period models
-    #' (i.e. 0-30days, 30-60days, ...), so that min 10 days requirement can be
-    #' employed? Or alternatively, add a 30day-period term to the model?
-    
+    #' --------------------------------------------------------------------------
+    #' Partitioning data into 30-day windows, each ID-ed by column `day30window`
     
     cycles <- as.numeric(floor(n_days/30))
     if(cycles == 0) cycles <- 1
@@ -999,7 +992,7 @@ speed_time_model <- function(dt,
       # merge with previous or next window
       # keep going till all windows have >10 days
       flag <- 1
-     
+      
       while(flag==1){
         
         daycheck <- dt %>%
@@ -1037,33 +1030,31 @@ speed_time_model <- function(dt,
         
         flag <- ifelse(any(flagcheck$ndays<10), 1, 0)
       }
-      
+
       logger.warn(
-          paste0(
-            "      | Track data covers ", n_days, " days.\n", 
-            "             | Models fitted to both ", nrow(flagcheck) , " windows or the full set of days."
-          ))
+        paste0(
+          "      |> Track data covers ", n_days, " days.\n", 
+          "             |> Models to be fitted to both ", nrow(flagcheck) , " windows and the full set of days."
+        ))
       
     }else{
       dt$day30window <- 1
     }
     
     
-    
-    
-    
+    #' ----------------------------------------------------
+    # Set modelling data - stationary events only
     newdat <- dt %>%
-      dplyr::mutate(
-        month = month(timestamp),
-        response = kmph + 0.00001
-      ) %>%
+      dplyr::mutate(response = kmph + 0.00001) %>%
       dplyr::filter(
         !is.na(response),
-        stationary == 1#,
-        #timestamp > (max(timestamp) - days(30))
+        stationary == 1
       )
     
-    #browser()
+    
+    #' ----------------------------------------------------
+    #' Start off with a Gamma link, without accounting for 30-day window
+    #' heterogeneity in relationship
     
     initialModel <- suppressWarnings(
       glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
@@ -1195,29 +1186,19 @@ speed_time_model <- function(dt,
       p_obs_fit <- plot_diagnostics(fit, plotting = "f", print = FALSE)
       p_mn_var <- plotMeanVar(fit, print = FALSE, cut.bins = find_cut.bins(fit))
       
-      # Next graph involves model updating to more flexible predictor, so
-      # refitting brings new issues at times. Handling errors by skipping the plotting.
-      p_cmltv_rsd <- tryCatch(
+      #' Next graph involves model updating to more flexible predictor, so
+      #' refitting brings new issues at times. Handling errors and non-convergence
+      #' warnings by skipping the plotting.
+      p_cmltv_rsd <- try_fetch(
         plot_cmltv_resids(fit, varlist = "hrs_since_sunrise", variableonly = TRUE, print = FALSE),
-        error = \(cnd) grid::textGrob('Cumulative Residuals Plot Not Available')
+        error = \(cnd) grid::textGrob('Cumulative Residuals Plot Not Available'),
+        warning = \(cnd){
+          if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
+            # rlang::cnd_muffle(cnd)
+            grid::textGrob('Cumulative Residuals Plot Not Available')
+          }
+        }
       )
-      
-      
-      # p_cmltv_rsd <- rlang::try_fetch(
-      #   plot_cmltv_resids(fit, varlist = "hrs_since_sunrise", variableonly = TRUE, print = FALSE),
-      #   error = \(cnd){
-      #     grid::textGrob('Cumulative Residuals Plot Not Available')
-      #   },
-      #   warning = \(cnd){
-      #     if(conditionMessage(cnd) == "glm.fit: algorithm did converge"){
-      #       rlang::cnd_muffle(cnd)
-      #       rlang::zap()
-      #     }else{
-      #       warning(conditionMessage(cnd), call. = FALSE)
-      #     }
-      #   }
-      # )
-      
       
       p_diags <- (p_fit + p_resids) / (p_acf + p_obs_fit) / (p_mn_var + p_cmltv_rsd) + 
         patchwork::plot_annotation(title = paste0("Track ID: ", id), tag_levels = 'A') &
