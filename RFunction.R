@@ -35,7 +35,7 @@ rFunction = function(data,
                      keepAllCols = FALSE) {
   
   
-  #' TODO (Desirables)
+  #' TODO (very low priority)
   #' 
   #'   - make use of 'dplyr::' consistent
   #'   - drop "ID" and "timestamp" redefinition and use "mt_" functions instead
@@ -673,10 +673,11 @@ rFunction = function(data,
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", 
+        "timestamp_local", "local_tz", "ID", "altdiff", 
         "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", 
         "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", 
-        "cumtimestat_pctl", "kmphCI2.5", "kmphpreds"
+        "cumtimestat_pctl", "kmphCI2.5", "kmphpreds",
+        "revcum_trav", "runtime", "dayRunThresh"
       ) 
     ))
     
