@@ -497,28 +497,24 @@ rFunction = function(data,
   
   #' Remaining Resting locations re-classified as Feeding if the speed to next
   #' location is greater the 97.5th percentile of the predicted stationary
-  #' speeds at that time of the day (day-hours)
+  #' speeds at that time of the day (hours-since-sunrise)
   
   logger.info("[6] Performing speed-given-time classification")
   
-  #### [6.1] Fit Stationary Speed Vs day-hours model  ----------------
-  logger.info(" |- Deriving thresholds for stationary-speed given hour-since-sunrise.")
+  #### [6.1] Fit Stationary Speed Vs hour-since-sunrise model  ----------------
+  logger.info(" |- Deriving thresholds for stationary-speed given hours-since-sunrise.")
   
   progressr::handlers("cli")
   
- # browser()
-
   #' setting parallel processing using availableCores() to set # workers.
-  #' {future} imports that function from {parallelly}, which  is safe to use in
+  #' {future} imports that function from {parallelly}, which is safe to use in
   #' container environments (e.g. Docker)
-
-  #future::plan("multisession", workers = future::availableCores(omit = 2))
   future::plan("cluster", workers = future::availableCores(omit = 2))
-
+  
   progressr::with_progress({
     # initiate progress signaler
     pb <- progressr::progressor(steps = mt_n_tracks(data))
-
+    
     data <- data |>
       group_by(ID) |>
       dplyr::group_split() |>
@@ -528,25 +524,25 @@ rFunction = function(data,
         ),
         .options = furrr_options(
           seed = TRUE,
-          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate",
-                       "patchwork", "ggplot2")
+          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate", "rlang",
+          "purrr", "patchwork", "ggplot2", "grid")
         )
       ) |>
       mt_stack()
   })
-
+  
   future::plan("sequential")
-
+  
   # data <- data |>
   #   group_by(ID) |>
   #   dplyr::group_split() |>
   #   purrr::map(
   #     .f = ~speed_time_model(
-  #       .x, pb = NULL, diag_plots = create_plots, void_non_converging = TRUE,
-  #       in_parallel = FALSE)
+  #       .x, pb = NULL, diag_plots = create_plots, void_non_converging = TRUE
+  #     )
   #   ) |>
   #   mt_stack()
-
+  
   
   #### [6.2] Apply speed-time rule  ----------------
   logger.info(" |- Apply speed-time rule")
