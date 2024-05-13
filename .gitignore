@@ -20,3 +20,27 @@ plot_ACC.R
 .env
 salsa1d.log
 .env
+data/raw/asavannah-meft_processed_acc_merged.rds
+data/raw/gaia_processed_acc_merged.rds
+data/raw/gaia_processed_acc_merged_30days.rds
+data/raw/kendal_Tanzania_processed_acc_merged.rds
+data/raw/nam_sop_processed_acc_merged.rds
+data/raw/nam_sop_processed_acc_merged_30days.rds
+data/raw/pan-africa_vultures_processed.rds
+data/raw/SA_VfA_MPIAB_processed_acc_merged.rds
+data/raw/wcs_Ruaha-Katavi_processed.rds
+data/raw/WhitebackedVulturesZambiaKendall_processed.rds
+dev/gather_and_encrypt_test_datasets.r
+.behavsummary.csv
+dev/issue11-update_stationary_altitude/issue11-update_stationary_altitude_cache/commonmark/data upload_14eae13a2d31b5e57370bb68524c9b99.RData
+dev/issue11-update_stationary_altitude/issue11-update_stationary_altitude_cache/commonmark/data upload_14eae13a2d31b5e57370bb68524c9b99.rdb
+dev/issue11-update_stationary_altitude/issue11-update_stationary_altitude_cache/commonmark/data upload_14eae13a2d31b5e57370bb68524c9b99.rdx
+dev/issue11-update_stationary_altitude/issue11-update_stationary_altitude_cache/commonmark/unnamed-chunk-2_e9e103fc42d06cc2df2fd6ce30435951.RData
+dev/issue11-update_stationary_altitude/issue11-update_stationary_altitude_cache/commonmark/unnamed-chunk-2_e9e103fc42d06cc2df2fd6ce30435951.rdb
+dev/issue11-update_stationary_altitude/issue11-update_stationary_altitude_cache/commonmark/unnamed-chunk-2_e9e103fc42d06cc2df2fd6ce30435951.rdx
+databehavsummary.csv
+Rplots.pdf
+data/raw/weirdone.rds
+.birdtrack_*
+.speed_hrs_diagnostics*
+README.html

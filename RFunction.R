@@ -6,33 +6,50 @@ library('ggplot2')
 library('data.table')
 library('sf')
 library('units')
-library('stringr')
 library('tidyr') 
 library('MRSea')
 library("purrr")
 library("zoo")
 library("spatstat.utils")
+library("furrr")
+library("future")
+library("progressr")
+library("patchwork")
+library("splines")
+library("rlang")
+library("grid")
+library("sandwich") # undisclosed dependency of MRSea
 
 `%!in%` <- Negate(`%in%`)
 not_null <- Negate(is.null)
 
 
-# Main RFunction -------------------------------------------------------------------------------------
+# Main RFunction ====================================================================
 
-rFunction = function(data, travelcut,
-                     create_plots = TRUE,
+rFunction = function(data, 
+                     travelcut = 3,
+                     altbound = 25,
                      sunrise_leeway = 0,
                      sunset_leeway = 0,
-                     altbound = 25,
-                     keepAllCols = FALSE
-                     # second_stage_model = NULL, fit_speed_time  # Will be reincorporated later
-) {
+                     create_plots = TRUE,
+                     keepAllCols = FALSE) {
   
-
-  # Validate Input Data ----------------------------------------------------------------------------------------------
+  
+  #' TODO (very low priority)
+  #' 
+  #'   - make use of 'dplyr::' consistent
+  #'   - drop "ID" and "timestamp" redefinition and use "mt_" functions instead
+  #'   - improve error messages with {rlang}
+  
+  
+  ## Globals --------------------------------------
+  ggplot2::theme_set(ggplot2::theme_bw())
+  
+  
+  ## Validate Input Data --------------------------------------------
   
   logger.trace(paste0(
-    "Input data provided:  \n", 
+    "\nInput data provided:  \n", 
     "travelcut: ", toString(travelcut), "\n",
     "sunrise_leeway: ", toString(sunrise_leeway), "\n", 
     "sunset_leeway: ", toString(sunset_leeway), "\n",
@@ -47,33 +64,44 @@ rFunction = function(data, travelcut,
     return(data)}
   
   
-  ## travelcut ----
-  if(travelcut <= 0 | !is.numeric(travelcut)) {
-    logger.fatal("Speed cut-off for travelling behavour is not a valid speed. Returning input - please use valid settings")
-    stop("Speed cut-off for travelling behavour (`travelcut`) is not a valid speed. Returning input - please use valid settings")
+  ### travelcut ----
+  if(is.null(travelcut)){
+    logger.fatal("Missing input value for stationary speed upper-bound (`travelcut`). Terminating App.")
+    stop("Missing input value for stationary speed upper-bound (`travelcut`). Please provide a valid input.")
+    
+  } else if(travelcut <= 0) {
+    logger.fatal("Speed upper-bound for stationary behavour (`travelcut`) must be > 0. Terminating App.")
+    stop("Invalid speed upper-bound for stationary behavour (`travelcut`). Please provide values > 0.")
   }
   
   
-  ## altbound ----
-  ## (only if column named "altitude" is in input dataset)
+  ### altbound ----
+  ### (only if column named "altitude" is in input dataset)
   
   if("altitude" %in% colnames(data)){
     
-    if(!is.numeric(altbound)) {
-      logger.warn("`altbound` is non-numeric. Stopping computation - please check inputs.")
-      stop("Altitude change threshold (`altbound`) is non-numeric. Please check input settings.")
+    if(is.null(altbound)){
+      logger.fatal("Missing input value for altitude change threshold (`altbound`). Terminating App.")
+      stop("Missing input value for altitude change threshold (`altbound`). Please provide a valid input.")
+      
+    } else if(altbound < 0) {
+      logger.fatal("`altbound` must be >= 0. Terminating computation.")
+      stop("Invalid altitude change threshold (`altbound`). Please provide values >= 0.")
       
     } else if(altbound == 0){
-      
       logger.warn(
         paste0(" |- Altitude threshold (`altbound`) is set to 0m, and thus ",
                "ANY change is altitude will be considered as ascencing/descending ",
                "movement.")
       )
-    }  
+    }
+    
+    # set with expected units (meters)
+    altbound <- units::set_units(altbound, "m")
   } 
   
-  ## 'leeway' inputs ----
+  
+  ### 'leeway' inputs ----
   if(is.null(sunrise_leeway)) {
     logger.warn(" |- No sunrise leeway provided as input. Defaulting to no leeway.")
     sunrise_leeway <- 0
@@ -84,32 +112,42 @@ rFunction = function(data, travelcut,
   }
   
   
-  ## Input data: time-related columns -----
+  ### Input data: relevant columns -----
+  
   if("altitude" %!in% colnames(data)){
     logger.warn(" |- Column `altitude` is absent from input data.")
   } else{
     logger.info(" |- `altitude` column identified. Able to detect altitude changes.")
+    
+    # ensure `altitude` is in meters
+    data$altitude <- units::set_units(data$altitude, "m")
   }
   
   
   if ("timestamp_local" %!in% colnames(data)) {
-    logger.warn(
+    logger.fatal(" |- `timestamp_local` is not comprised in input data. Terminating App execution.")
+    stop(
       paste0(
-        " |- `timestamp_local` is not a column within the data. Classification process ", 
-        "may be flawed if timezones of time-related columns are inconsistent. ",
-        "Please use 'Add Local and Solar Time' MoveApp to generate this column.")
+        "Column `timestamp_local` is not comprised in input data. Local time is ",
+        "a fundamental requirement for the classification process.\n",   
+        "   Please deploy the App 'Add Local and Solar Time' earlier in the Workflow ",  
+        "to bind local time to the input dataset."),
+      call. = FALSE
     )
+  }else{
+    logger.info(" |- Local Time column identified")
   }
   
   
   if ("sunrise_timestamp" %!in% colnames(data) | "sunset_timestamp" %!in% colnames(data)) {
-    logger.fatal("`sunrise_timestamp` or `sunset timestamp` is not a column in the input data. Sunrise-sunset classification cannot be performed. Terminating - please use the 'Add Local and Solar Time' MoveApp in this workflow BEFORE this MoveApp")
+    logger.fatal("`sunrise_timestamp` and/or `sunset timestamp` columns are missing in the input data. Terminating App.")
     stop(
       paste0(
-        "Either `sunrise_timestamp` or `sunset timestamp` is not a column in the ",
-        "input data. Identification of night-time points is fundamental for the ",
-        "classification process. Please use the 'Add Local and Solar Time' MoveApp in ",
-        "the workflow BEFORE this MoveApp to add the sought columns.")
+        "`sunrise_timestamp` and/or `sunset timestamp` are not a columns in the ",
+        "input data.\n   Identification of night-time points is fundamental for the ",
+        "classification process. Please deploy the App 'Add Local and Solar Time' ",
+        "earlier in the workflow to add the required columns."), 
+      call. = FALSE
     )
   } else {
     logger.info(" |- Sunrise and sunset columns identified. Able to perform night-time identification.")
@@ -120,59 +158,55 @@ rFunction = function(data, travelcut,
   logger.info(" |- Input is in correct format. Proceeding with data preparation.")
   
   
-  # Data Preparation ===========================================================
+  ## Data Preparation ===========================================================
   
   logger.info("Initiate Data Preparation Steps")
-  
-  
-  ## Generate overarching variables  ------------------------------
 
-  logger.info(" |- Generate overarching variables")
   
-  data %<>% dplyr::mutate(
-    ID = mt_track_id(.),
-    timestamp = mt_time(.)
-  )
+  ### Generate general variables  ------------------------------
+
+  logger.info(" |- Generate general variables")
   
-  #' NOTE: `yearmonthday`, `hourmin`, `timediff_hrs`, `dist_m` & `kmph`
-  #' variables are expected to provide information between consecutive
-  #' locations. If the Standardizing App (or other) has been used earlier in the
-  #' WF, these cols could already be present in the input. However, there is no
-  #' guarantee that input has been thinned by other in-between App. Therefore, to
-  #' ensure accuracy, we always (re)generate these columns here.
-  
-  # Add date label and day-hours (i.e. decimal hours since start of day)
-  # QUESTION (BC): Should we restrict usage to input with local_time only? I think we should
-  if ("timestamp_local" %in% colnames(data)) {
-    data %<>% 
-      mutate(
-        yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp_local, 1, 10), "-", ""),
-        hourmin = lubridate::hour(timestamp_local) + 
-          lubridate::minute(timestamp_local)/60 + 
-          lubridate::second(timestamp_local)/3600
-      ) 
-  } else {
-    data %<>% 
-      mutate(
-        yearmonthday = stringr::str_replace_all(stringr::str_sub(timestamp, 1, 10), "-", ""),
-        hourmin = lubridate::hour(timestamp) + 
-          lubridate::minute(timestamp)/60 + 
-          lubridate::second(timestamp)/3600
-      )                     
-  }
-  
-  # Add time gap, distance and speed cols
   data %<>% 
-    arrange(mt_track_id(data), mt_time(data)) %>%
-    # distinct(timestamp, .keep_all = TRUE) %>%
+    dplyr::mutate(
+      ID = mt_track_id(.),
+      timestamp = mt_time(.)
+    ) %>%
+    # drop events with missing timestamps
+    dplyr::filter(!is.na(timestamp)) %>%
+    # order by time within track
+    arrange(ID, timestamp)
+    # distinct(timestamp, .keep_all = TRUE)
+  
+  
+  # Add date label, day hours-since-midnight and hours-since-sunrise (i.e. a proxy for day-light intensity)
+  data %<>% 
+    mutate(
+      yearmonthday = gsub("-", "", substr(timestamp_local, 1, 10)),
+      hrs_since_sunrise = 
+        as.double(
+          difftime(
+            lubridate::with_tz(timestamp, lubridate::tz(sunrise_timestamp)), # ensures TZ consistency
+            sunrise_timestamp, 
+            units = "hour"
+          ))
+    )
+  
+  
+  #' NOTE:`timediff_hrs`, `dist_m` & `kmph` are variables expected to provide
+  #' information between consecutive locations. If the Standardizing App (or
+  #' other) has been used earlier in the WF, these cols could already be present
+  #' in the input. However, there is no guarantee input data has not been
+  #' thinned by other in-between App. For insurance, we (re)generate these 
+  #' columns here.
+  data %<>% 
     mutate(
       timediff_hrs = as.vector(mt_time_lags(., units = "hours")),
-      dist_m = as.vector(mt_distance(., units = "m")),
-      kmph = as.vector(mt_speed(., units = "km/h"))
+      kmph = as.vector(mt_speed(., units = "km/h")),
+      dist_m = as.vector(mt_distance(., units = "m"))
     ) 
-  
 
-  ## Identify stationary points -----------------------------------
+  ### Identify stationary points -----------------------------------
   
   logger.info(" |- Identify stationary points")
   
@@ -192,7 +226,7 @@ rFunction = function(data, travelcut,
   
   
   
-  ## Detect Altitude Changes -------------------------------------
+  ### Detect Altitude Changes -------------------------------------
   
   #' Categorize vertical movement based on altitude change
   #'  (i) change in altitude to next location > threshold: altchange == "ascent"
@@ -210,10 +244,7 @@ rFunction = function(data, travelcut,
         # Reset altitude change each day:
         group_by(ID, yearmonthday) %>%
         dplyr::mutate(
-          altitude = as.numeric(altitude), # fix when input is character vector
-          
           altdiff = dplyr::lead(altitude) - altitude,
-          
           altchange = case_when(
             altdiff < -altbound ~ "descent",
             altdiff > altbound ~ "ascent",
@@ -238,7 +269,7 @@ rFunction = function(data, travelcut,
   
   
   
-  ## Night-time identification ----------------------------
+  ### Night-time identification ----------------------------
 
   #' (i) nightpoint == 0 if sunrise_timestamp < timestamp < sunrise_timestamp (+/- leeway), 
   #' (ii) otherwise nightpoint == 1
@@ -257,7 +288,7 @@ rFunction = function(data, travelcut,
   
   
   
-  ## Calculate ACC variance ----------------------------
+  ### Calculate ACC variance ----------------------------
   
   #' If ACC data is available, calculate variance in acceleration bursts
   #' till subsequent location event - expect one variance statistic for each enabled ACC axes
@@ -284,130 +315,18 @@ rFunction = function(data, travelcut,
     ACCclassify <- FALSE
   }  
   
-  if(!ACCclassify) logger.info("  |- No accelerometer data detected: skipping ACC preparation.")
+  if(!ACCclassify) logger.info(" |- No accelerometer data detected in any of the tracks: skipping ACC preparation.")
   
+
   
-  
-  ## Identify overnight roosting sites  --------------------------
-  
-  logger.info(" |- Deriving overnight roosting sites.")
-  
-  data <- add_roost_cols(data, sunrise_leeway, sunset_leeway)
-  
-  
-  ## Stationary Speed Vs day-hours model  --------------------------------------------
-  
-  logger.info(" |- Deriving thresholds for stationary-speed given hour-of-day.")
-  
-  # *** move this section to the standardising app???** ##
-  # Probably more efficient ways to do this #
-  
-  data <- data |> 
-    group_by(ID) |>
-    dplyr::group_split() |> 
-    purrr::map(\(dt){
-      
-      id <- unique(dt$ID)
-      
-      logger.info(paste0("  |> Fitting model for subject ", id, " @ ", lubridate::now()))
-      
-      newdat <- dt %>%
-        mutate(month = month(timestamp),
-               response = kmph + 0.00001) %>%
-        filter(!is.na(response), 
-               response < travelcut,
-               timestamp > (max(timestamp) - days(30))) 
-      
-      # ** add if statement or similar to ensure that if not enough data, 
-      # this modelling is not done (e.g. need 10 days??) ** #
-      # ALSO what happens if more than 30 days data provided??
-      #
-      # NOTE: Predicting to full dataset (we'll ignore the travelling points in the classification later)
-      
-      initialModel <- glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
-      
-      salsa1dlist <- list(fitnessMeasure = 'BIC', 
-                          minKnots_1d = c(1), 
-                          maxKnots_1d = c(5), 
-                          startKnots_1d = c(1), 
-                          degree = c(2), 
-                          maxIterations = 10,
-                          gaps = c(0))
-      
-      # run SALSA
-      fit <- tryCatch(
-        
-        runSALSA1D(
-          initialModel, 
-          salsa1dlist, 
-          varlist=c("hourmin"), 
-          splineParams=NULL, 
-          datain=newdat, 
-          predictionData = filter(dt, !is.na(kmph)),
-          panelid = newdat$yearmonthday, 
-          suppress.printout = TRUE)$bestModel,
-        
-        error = \(cnd){
-          logger.warn(
-            paste0(
-              "    |x Ouch!! Something went wrong while fitting the model for subject ", id, ".\n",
-              "           |x `runSALSA1D()` returned the following error message:\n",
-              "           |x \"", conditionMessage(cnd), "\"\n", 
-              "           |x Speed thresholds WON'T be considered in the behaviour classification of subject ", id, "."
-            ))
-          
-          return(NULL)
-        }
-      )
-      
-      if(!is_null(fit)){
-        
-        dt$kmphpreds <- predict(object = fit, newdata = dt)
-        
-        boots <- do.bootstrap.cress.robust(
-          model.obj = fit, 
-          predictionGrid = dt, 
-          B = 1000, robust = TRUE, 
-          cat.message = FALSE)
-        
-        cis <- makeBootCIs(boots)
-        
-        # -- Construct prediction intervals
-        d = summary(fit)$dispersion
-        predint <- apply(boots, 2, function(x){rgamma(n = length(x), shape = 1/d, scale= x*d)})
-        pis <- t(apply(predint, 1, FUN = quantile,probs = c(0.025, 0.975)))
-        
-        dt <- dt %>% 
-          mutate("kmphCI2.5" = cis[,1],
-                 "kmphCI97.5" = cis[,2],
-                 "kmphPI2.5" = pis[,1], 
-                 "kmphPI97.5" = pis[,2]) 
-        
-        # ultimately probably only need to keep last column (kmphPI97.5)  
-      } else{
-        
-        dt <- dt |> 
-          mutate(
-            kmphpreds = NA,
-            `kmphCI2.5` = NA,
-            `kmphCI97.5` = NA,
-            `kmphPI2.5` = NA, 
-            `kmphPI97.5` = NA
-          )
-      }
-      return(dt)
-    }) |> 
-    mt_stack()
-  
-  
-  
-  
-  # Bahaviour Classification Steps [1 -7] ========================================================
+  # Behaviour Classification Steps [1 -7] ========================================================
   
   logger.info("All data prepared. Performing all classification steps")
   
   
-  ## [1] Speed Classification ----
+  
+  ### [1] Speed Classification -------------------
+  
   logger.info("[1] Performing speed classification")
   data %<>% mutate(
     # Add column to explain classification:
@@ -420,7 +339,9 @@ rFunction = function(data, travelcut,
   logger.info(paste0("   |> ", sum(data$behav == "STravelling", na.rm = T), " locations classified as STravelling"))
   
   
-  ## [2] Altitude Classification ----
+  
+  
+  ### [2] Altitude Classification --------------------
   
   #' Remaining resting locations reclassified as travelling according to the following rules:
   #' (i) If a bird is ascending ==> STravelling
@@ -428,12 +349,6 @@ rFunction = function(data, travelcut,
   #'      Next location is ascending/descending ==> STravelling
   #'      Next location is flatlining ==> remains SResting
   #' (iii) If a bird is flatlining, it remains SResting
-  #' 
-  #' NOTE: stationary locations are not re-classified here, so this step can
-  #' produce locations with both `stationary == 1` AND `behav == STravelling`.
-  #' This can be a bit counter-intuitive, but we don't want to change it,
-  #' otherwise the roosting-site identification performed in Data Prep would be
-  #' outdated
   
   if(alt_classify){
   
@@ -452,10 +367,11 @@ rFunction = function(data, travelcut,
           (behav == "SResting") & (altchange == "ascent") ~ "STravelling",
           (behav == "SResting") & (altchange == "descent") & (lead(altchange) %in% c("descent", "ascent")) ~ "STravelling",
           TRUE ~ behav
-        ),
-        # # QUESTION (BC): Change stationary state to conform with above resting -> travelling re-classification??
-        # stationary = ifelse(behav == "STravelling", 0, stationary)
+        )
       )
+    
+    #### <!> Update stationary status -------------
+    data <- data |> mutate(stationary = ifelse(behav == "STravelling", 0, stationary))
     
     # Log results
     logger.info(paste0("   |> ", sum(data$RULE == "[2] Altitude increasing" | data$RULE == "[2] Altitude decreasing", na.rm = T), " locations re-classified as STravelling"))  
@@ -467,7 +383,7 @@ rFunction = function(data, travelcut,
   
   
   
-  ## [3] Night-time Classification -----
+  ### [3] Night-time Classification ---------------
   
   #' Remaining resting locations re-classified as (night-time) roosting if they've 
   #' been identified as a night point (i.e. occurred between sunset and sunrise)
@@ -493,7 +409,7 @@ rFunction = function(data, travelcut,
   
   
   
-  ## [*] Estimate ACC thresholds at night-time roosting locations -----
+  #### <!> Estimate ACC thresholds at night-time roosting locations -----
   if (ACCclassify == TRUE) {
     roostpoints <- data %>%
       filter(behav == "SRoosting") %>%
@@ -507,11 +423,14 @@ rFunction = function(data, travelcut,
   }
   
   
-
-  ## [4] Roosting-site Classification -------------
   
-  #' Remaining resting locations re-classified as roosting if identified as part
-  #' of a roosting-site, which is defined as: 
+  
+  ### [4] Roosting-site Classification -------------
+  
+  logger.info("[4] Performing roosting-site classification")
+  
+  #' Remaining (daytime) resting locations re-classified as roosting if
+  #' identified as part of a roosting-site, which is defined as:
   #' 
   #' Consecutive stationary locations (`roostgroup`) encompassing night-time
   #' locations with total overnight distance traveled less than 15 meters
@@ -520,7 +439,15 @@ rFunction = function(data, travelcut,
   #' NOTE: STravelling locations not affected by this step, even if they were
   #' tagged as part of a roost-site
   
-  logger.info("[4] Performing roosting-site classification")
+  
+  #### [4.1] Identify overnight roosting sites ------
+  logger.info(" |- Deriving overnight roosting sites.")
+  
+  data <- add_roost_cols(data, sunrise_leeway, sunset_leeway)
+  
+  
+  #### [4.2] Apply roosting-site rule ---------
+  logger.info(" |- Apply roost-site rule")
   
   data %<>%
     group_by(ID, roostgroup) %>%
@@ -537,16 +464,18 @@ rFunction = function(data, travelcut,
   
   
   
-  ## [5] Non-roosting Stationary Cumulative-time Classification ------------
+  ### [5] Non-roosting Stationary Cumulative-time Classification ------------
   
   #' Remaining Resting locations re-classified as Feeding if they are part of a
   #' sequence of non-roosting time-points that remain stationary for an
   #' unusually long period of time
-
+   
   logger.info("[5] Performing non-roosting stationary cumulative-time classification")
   
-  #' Derive required columns - check function definition for further details
-  data <- data |> add_cmltv_stationary_cols()
+  #### [5.1] Derive non-roosting stationary runs  -----
+  data <- add_nonroost_stationary_cols(data)
+  
+  #### [5.2] Apply non-roosting stationary Rule  --------- 
   
   #' Re-classify Resting locations assigned with cumulative stationary times
   #' that exceed the 95th percentile of stationary run durations. Percentile
@@ -566,19 +495,65 @@ rFunction = function(data, travelcut,
   
   
   
-  ## [6] Speed-Time Classification --------------
+  ### [6] Speed-Time Classification --------------
   
   #' Remaining Resting locations re-classified as Feeding if the speed to next
   #' location is greater the 97.5th percentile of the predicted stationary
-  #' speeds at that time of the day (day-hours)
+  #' speeds at that time of the day (hours-since-sunrise)
   
-  logger.info("[6] Performing speed-time classification")
-
+  logger.info("[6] Performing speed-given-time classification")
+  
+  #### [6.1] Fit Stationary Speed Vs hour-since-sunrise model  ----------------
+  logger.info(" |- Deriving thresholds for stationary-speed given hours-since-sunrise.")
+  
+  progressr::handlers("cli")
+  
+  #' setting parallel processing using availableCores() to set # workers.
+  #' {future} imports that function from {parallelly}, which is safe to use in
+  #' container environments (e.g. Docker)
+  future::plan("cluster", workers = future::availableCores(omit = 2))
+  
+  progressr::with_progress({
+    # initiate progress signaler
+    pb <- progressr::progressor(steps = mt_n_tracks(data))
+    
+    data <- data |>
+      group_by(ID) |>
+      dplyr::group_split() |>
+      furrr::future_map(
+        .f = ~speed_time_model(
+          .x, pb = pb, diag_plots = create_plots, void_non_converging = TRUE
+        ),
+        .options = furrr_options(
+          seed = TRUE,
+          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate", "rlang",
+          "purrr", "patchwork", "ggplot2", "grid")
+        )
+      ) |>
+      mt_stack()
+  })
+  
+  future::plan("sequential")
+  
+  # data <- data |>
+  #   group_by(ID) |>
+  #   dplyr::group_split() |>
+  #   purrr::map(
+  #     .f = ~speed_time_model(
+  #       .x, pb = NULL, diag_plots = create_plots, void_non_converging = TRUE
+  #     )
+  #   ) |>
+  #   mt_stack()
+  
+  
+  #### [6.2] Apply speed-time rule  ----------------
+  logger.info(" |- Apply speed-time rule")
+  
   data %<>% 
     ungroup() %>%
     mutate(
-      RULE = ifelse(!is.na(kmphPI97.5) & kmph > kmphPI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
-      behav = ifelse(!is.na(kmphPI97.5) & kmph > kmphPI97.5 & behav == "SResting", "SFeeding", behav)
+      RULE = ifelse(!is.na(kmphCI97.5) & !is.na(kmph) & kmph > kmphCI97.5 & behav == "SResting", "[6] Exceed Speed-Time threshold", RULE),
+      behav = ifelse(!is.na(kmphCI97.5) & !is.na(kmph) & kmph > kmphCI97.5 & behav == "SResting", "SFeeding", behav)
     )
   
   # Log results
@@ -586,7 +561,7 @@ rFunction = function(data, travelcut,
   
   
   
-  ## [7] Accelerometer Classification -----
+  ### [7] Accelerometer Classification -----
   
   #' Remaining Resting locations re-classified as Feeding if the variance in
   #' acceleration to the next location exceeds the 95th percentile of
@@ -594,9 +569,10 @@ rFunction = function(data, travelcut,
   #' active accelerometer axis. Percentile thresholds are calculated for each
   #' individual from input data.
   
-  logger.info("[7] Performing accelerometer classification")
-  
   if (ACCclassify == TRUE) {
+    
+    logger.info("[7] Performing accelerometer classification")
+    
     data %<>% 
       left_join(roostpoints, by = "ID") %>%
       mutate(
@@ -617,10 +593,14 @@ rFunction = function(data, travelcut,
       ) %>%
       # Move these attributes to track data:
       mt_as_track_attribute(c("thresx", "thresy", "thresz"))
+    
+    # Log results
+    logger.trace(paste0("   ", sum(data$RULE == "[7] ACC not similar to roosting", na.rm = T), " locations re-classified as SFeeding"))
+    
+  }else{
+    logger.warn("[7] Skipping accelerometer classification due to absence of ACC data in all tracks.")
   }
   
-  # Log results
-  logger.trace(paste0("   ", sum(data$RULE == "[7] ACC not similar to roosting", na.rm = T), " locations re-classified as SFeeding"))
   
   
   # Summarise classified behaviour 
@@ -632,39 +612,52 @@ rFunction = function(data, travelcut,
   
   
   
-  # Create plots, if selected ------------------------------------------------------
+  ## Create plots, if selected ------------------------------------------------------
   
-  logger.info("Classification complete. Generating output plots")
+  logger.info("Classification complete. Generating app artifacts")
   if(create_plots == TRUE) {
     
     # create simple plot
-    for (bird in unique(mt_track_id(data))) {
+    for (id in unique(mt_track_id(data))) {
       
-      # Create artefact
-      png(appArtifactPath(
-        paste0("birdtrack_", toString(bird), ".png")
-      ))
+      birddat <- filter_track_data(data, .track_id = id)
       
-      birddat <- data %>% 
-        filter_track_data(
-          .track_id = bird
-        )
+      birdplot <- birddat |> 
+        ggplot(aes(x = sf::st_coordinates(birddat)[, 1]/1000, y = sf::st_coordinates(birddat)[, 2]/1000) ) +
+        geom_path(col = "gray80") +
+        geom_point(aes(colour = behav)) +
+        scale_color_brewer(palette = "Set1") +
+        labs(
+          title = paste0("Behaviour classification for track ID ", id),
+          x = "Easting (km)", y = "Northing (km)"
+        ) + 
+        coord_equal()
       
-      birdplot <- ggplot(data = birddat, aes(x = sf::st_coordinates(birddat)[, 1], 
-                                             y = sf::st_coordinates(birddat)[, 2])) +
-        geom_path() +
-        geom_point(data = birddat, 
-                   aes(x = sf::st_coordinates(birddat)[, 1], 
-                       y = sf::st_coordinates(birddat)[, 2],
-                       colour = behav)) +
-        ggtitle(paste0("Behaviour classification of ID ", bird)) +
-        xlab("Easting") +
-        ylab("Northing")
-      print(birdplot)
+      ggsave(
+        file = appArtifactPath(paste0("birdtrack_", toString(id), ".png")),
+        height = 10,
+        width = 10
+      )
       
-      #Save as artefact
-      dev.off()
-      
+      # birdplot2 <- birddat |>
+      #   mutate(xc = sf::st_coordinates(birddat)[, 1],
+      #          yc = sf::st_coordinates(birddat)[, 2]) |>
+      #   filter(behav != "STravelling") |>
+      #   ggplot(aes(x = xc, y = yc) ) +
+      #   geom_path(col = "gray80") +
+      #   geom_point(aes(colour = behav)) +
+      #   scale_color_brewer(palette = "Set1") +
+      #   labs(
+      #     title = paste0("Behaviour classification for track ID ", id),
+      #     x = "Easting", y = "Northing"
+      #   ) + 
+      #   coord_equal()
+      # 
+      # ggsave(
+      #   file = appArtifactPath(paste0("birdtrack_notravel_", toString(id), ".png")),
+      #   height = 10,
+      #   width = 10
+      # )
     }
   }
   
@@ -672,13 +665,17 @@ rFunction = function(data, travelcut,
   behavsummary <- table(mt_track_id(data), data$behav)
   write.csv(behavsummary, file = appArtifactPath("behavsummary.csv"))
   
-  # Remove nonessential behavioural columns
+  
+  ## Remove nonessential behavioural columns -----------------------------------
   if (keepAllCols == FALSE) {
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "sunrise_timestamp", "sunset_timestamp", "timestamp_local", "ID", "altdiff", "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", "cumtimestat_pctl", "cumtimestat_pctl_BC",
-        "kmphCI2.5", "kmphPI2.5", "kmphpreds"
+        "timestamp_local", "local_tz", "ID", "altdiff", 
+        "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", 
+        "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", 
+        "cumtimestat_pctl", "kmphCI2.5", "kmphpreds",
+        "revcum_trav", "runtime", "dayRunThresh"
       ) 
     ))
     
@@ -687,7 +684,7 @@ rFunction = function(data, travelcut,
     logger.trace("Removing select nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", "stationaryNotRoost", "cumtimestat", "kmphCI2.5", "kmphPI2.5", "kmphpreds"
+        "ID", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav"
       ) 
     ))
   }
@@ -698,10 +695,12 @@ rFunction = function(data, travelcut,
 }
 
 
-# //////////////////////////////////////////////////////////////////////////////
-# Helper Functions ------
 
-#' Compute acceleration variance till next location ---------------------------
+# Helper Functions ====================================================================
+
+#' //////////////////////////////////////////////////////////////////////////////
+#' Compute acceleration variance till next location
+#' 
 acc_var <- function(data, interpolate = FALSE) {
   
   # Store track data for later recall
@@ -765,13 +764,16 @@ acc_var <- function(data, interpolate = FALSE) {
 }
 
   
-  
-#' derive and add roosting columns to data -----------------------------------------------
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////  
+#' Derive and add roosting columns to data 
+#' 
 #' New columns relevant for classification:
 #'  - `roostsite`: identifies overnight roosting sites (based on overnight 
 #'  traveled distance < 15m)
 #'  - `roostgroup`: identifies groups of locations with roost-like behaviour 
 #'  (consecutive non-travelling locations)
+#'  
 add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
   
   data %<>% 
@@ -822,6 +824,7 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
     )
   ) %>% dplyr::select(-c("temptime", "morning", "evening", "closest", "sunrise_difference", "sunset_difference"))
   
+  
   # Shortcut for calculating night-distances:
   # Filter dataset to only the marked final/first point
   # Bind distance using mt_distance and keep only overnight distances
@@ -865,24 +868,26 @@ add_roost_cols <- function(data, sunrise_leeway, sunset_leeway){
 
 
 
-#' Derive columns required for the non-roosting stationary cumulative time  -----------------------------------------------
+#' /////////////////////////////////////////////////////////////////////////////////////////////  
+#' Derive columns required for the non-roosting stationary cumulative time  
 #' 
 #' Relevant added columns 
 #'  - `cumtimestat`: cumulative time spent, up to each location, in a run of
 #'  non-roosting stationary time-points. 0's attributed to locations that are
-#'  not part of a stationary run#'  
+#'  not part of a stationary run  
 #'  - `dayRunThresh`: 95th percentile of stationary run durations, per bird  
-add_cmltv_stationary_cols <- function(data){
+add_nonroost_stationary_cols <- function(data){
   
   # Generate non-roosting stationary run-length data
   data %<>%
-    # QUESTION (BC): Shouldn't it be grouped by yearmonthday too? If not, the
-    # same run-length could link locations separated by gaps larger than a day
-    # (e.g. due to lack of GPS signal). Note: yearmonthday would have to be
-    # included in the subsequent group_by steps accordingly
     group_by(ID) %>%
     mutate(
-      stationaryNotRoost = ifelse(stationary == 1 & behav %!in% c("SRoosting", "STravelling"), 1, 0),
+      stationaryNotRoost = ifelse(stationary == 1 & behav %!in% c("SRoosting"), 1, 0),
+      # Adding condition to break runs spreading over large time gaps in GPS
+      # transmission, in order to stop inflation of run durations in `cumtimestat`.
+      # For now, hard-coding boundary to 3/4 of 24hrs has a value greater than 
+      # regular and acceptable overnight transmission gaps seen in some studies
+      stationaryNotRoost = ifelse(stationaryNotRoost == 1 & timediff_hrs > 16, NA, stationaryNotRoost),
       stationary_runLts = data.table::rleid(stationaryNotRoost == 1),     # id runs of stationary & non-stationary entries
       stationary_runLts = ifelse(stationaryNotRoost == 0, NA, stationary_runLts)
     ) %>%
@@ -894,16 +899,18 @@ add_cmltv_stationary_cols <- function(data){
     group_by(ID) %>%
     mutate(
       # cumtimestat_pctl = 1 - (match(cumtimestat, sort(cumtimestat))/(length(which(cumtimestat!="NA")) + 1)), # From original code, which perhaps is not doing what's suppposed to do
-      cumtimestat_pctl = 1 - ecdf(cumtimestat)(cumtimestat) 
+      cumtimestat_pctl = ifelse(all(is.na(cumtimestat)), NA, 1 - ecdf(cumtimestat)(cumtimestat))
     )
   
   
   # find the duration of every stationary run
   eventtimes <- data %>% data.frame() %>%
     group_by(ID, stationary_runLts) %>%
-    summarise(runtime = suppressWarnings(max(cumtimestat, na.rm = TRUE)),
-              runtime = ifelse(is.infinite(runtime), 0, runtime)) %>%
-    # making grouping explicit, for clarity
+    summarise(
+      runtime = suppressWarnings(max(cumtimestat, na.rm = TRUE)),
+      runtime = ifelse(is.infinite(runtime), 0, runtime), 
+      .groups = "drop"
+    ) %>%
     group_by(ID) %>% 
     mutate(dayRunThresh = quantile(runtime, probs = 0.95))
   
@@ -912,3 +919,697 @@ add_cmltv_stationary_cols <- function(data){
   
   data
 }
+
+
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////
+#' Fit stationary-speed given decimal hours-since-sunrise, for one single track
+#' 
+#' @param dt a move2 object for one single track
+#' @param pb a Progressor Function generated via `progressr::progressor` to
+#'   signal updates
+#' @param diag_plots logical, whether to generate model diagnostic plots and
+#'   export them as App artifacts
+#' @param model_obj logical, whether to return the fitted model object.
+#' 
+#' @return  If `model_obj = TRUE`, a list with: (i) the input data with 3 extra
+#'   columns for the predicted values and 95% CIs and (ii) the fitted model
+#'   object. Otherwise, only the input data with model predictions.
+#'   
+speed_time_model <- function(dt, 
+                             pb = NULL, 
+                             diag_plots = TRUE, 
+                             void_non_converging = TRUE,
+                             model_obj = FALSE
+                             ){
+  
+ # browser()
+  
+  id <- mt_track_id(dt) |> unique() |> as.character()
+  
+  if(length(id) > 1){
+    stop("`dt` contains data for more than one track. Please provide a move2 object with a single track")
+  } 
+  
+  #logger.info(paste0("   |> Fitting model for track ", id, " @ ", lubridate::now()))
+  logger.info(paste0("   |> Fitting model for track ", id))
+  
+  # Check number of days covered in dataset
+  n_days <- round(difftime(max(dt$timestamp), min(dt$timestamp), units = "day"), 1)
+  n_datadays <- length(unique(dt$yearmonthday))
+  
+  #' Impose condition where fitting only performed if there is more than 10 days
+  #' of data, otherwise data deemed insufficient to robustly describe the
+  #' relationship between stationary speeds and time-of-the-day (expressed as
+  #' hours-since-sunrise)
+  if(n_datadays < 10){
+    logger.warn(
+      paste0(
+        "      |x Track data reported on < 10 days. This is deemed insufficient to model speed-give-time robustly.\n", 
+        "             |i Speed-time classification will not be applied to this track."
+      ))
+    
+    fit <- NULL
+    
+  } else {
+    
+    #' --------------------------------------------------------------------------
+    #' Partitioning data into 30-day windows, each ID-ed by column `day30window`
+    
+    cycles <- as.numeric(floor(n_days/30))
+    if(cycles == 0) cycles <- 1
+    if(cycles > 1){
+      cutdata <- max(dt$timestamp)
+      for(c in 1:(cycles-1)){
+        cutdata <- c(cutdata, cutdata[c] - days(30))
+      }
+      cutdata <- c(cutdata, min(dt$timestamp))
+      cutdataf <- data.frame(cut = 1:cycles, start = cutdata[length(cutdata):2], end = cutdata[(length(cutdata)-1):1])
+      
+      dt$day30window <- NA
+      for(i in 1:nrow(cutdataf)){
+        dt$day30window <- ifelse(dplyr::between(dt$timestamp, cutdataf$start[i], cutdataf$end[i]), cutdataf$cut[i], dt$day30window)
+      }  
+      
+      # check that each window has more than 10 days
+      # merge with previous or next window
+      # keep going till all windows have >10 days
+      flag <- 1
+      
+      while(flag==1){
+        
+        daycheck <- dt %>%
+          as_tibble() %>%
+          dplyr::group_by(day30window) %>%
+          dplyr::summarise(n = n(),
+                    ndays = length(unique(yearmonthday)),
+                    mindate = dplyr::first(timestamp),
+                    maxdate = dplyr::last(timestamp)
+          ) %>%
+          dplyr::left_join(cutdataf, by = c("day30window" = "cut")) %>%
+          dplyr::mutate(
+            # end time of previous window 
+            #(`default` set so that 1st window always merges to 2nd window)
+            end_prev = dplyr::lag(end, default = as.POSIXct("2000-01-01 00:00:00")),
+            # start time of next window 
+            #(`default` set so that last window always merges to penultimate window)
+            start_next = dplyr::lead(start, default = as.POSIXct("2222-01-01 00:00:00")),
+            # set up potential ids to merge to 
+            mergeid = ifelse((mindate - end_prev) < (start_next - maxdate), dplyr::lag(day30window), dplyr::lead(day30window))
+          )
+        
+        # 1st window with less than 10 days
+        under10wind <- dplyr::filter(daycheck, ndays < 10) |> slice(1)
+        
+        if(nrow(under10wind)>0){
+          dt <- dt |>
+            mutate(day30window = ifelse(day30window == under10wind$day30window, under10wind$mergeid, day30window))
+        }
+        
+        # merge time windows by overwriting to merge window id
+        flagcheck <- dt %>% 
+          dplyr::group_by(day30window) %>% 
+          dplyr::summarise(ndays = length(unique((yearmonthday))))
+        
+        flag <- ifelse(any(flagcheck$ndays<10), 1, 0)
+      }
+
+      logger.warn(
+        paste0(
+          "      |> Track data covers ", n_days, " days.\n", 
+          "             |> Models to be fitted to both ", nrow(flagcheck) , " windows and the full set of days."
+        ))
+      
+    }else{
+      dt$day30window <- 1
+    }
+    
+    
+    #' ----------------------------------------------------
+    # Set modelling data - stationary events only
+    newdat <- dt %>%
+      dplyr::mutate(response = kmph + 0.00001) %>%
+      dplyr::filter(
+        !is.na(response),
+        stationary == 1
+      )
+    
+    
+    #' ----------------------------------------------------
+    #' Start off with a Gamma link, without accounting for 30-day window
+    #' heterogeneity in relationship
+    
+    initialModel <- suppressWarnings(
+      glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
+    )
+    
+    salsa1dlist <- list(
+      fitnessMeasure = 'BIC',
+      minKnots_1d = c(1),
+      maxKnots_1d = c(5),
+      startKnots_1d = c(1),
+      degree = c(2),
+      maxIterations = 10,
+      gaps = c(1.5),
+      splines = c("ns"),
+      cv.opts=list(cv.gamMRSea.seed=357, K=5) 
+    )
+
+        # run SALSA with Gamma
+    fit <- fit_SALSA(
+      initialModel = initialModel, 
+      salsa1dlist = salsa1dlist,
+      varlist=c("hrs_since_sunrise"),
+      fittingData = newdat,
+      predictionData = filter(dt, !is.na(kmph)),
+      panelid = newdat$yearmonthday,
+      void_non_converging = void_non_converging,
+      logger_failure_msg = "Fitting a log-Gaussian model."
+    )
+                         
+   
+   
+    #' ------------------------------------------
+    # Try alternative log-Gaussian model
+    
+    if(is.null(fit)){
+      initialModel <- suppressWarnings(
+        glm(response  ~ 1 , family = gaussian(link="log"), data = newdat)
+      )
+      
+      fit <- fit_SALSA(
+        initialModel = initialModel, 
+        salsa1dlist = salsa1dlist,
+        varlist=c("hrs_since_sunrise"),
+        fittingData = newdat,
+        predictionData = filter(dt, !is.na(kmph)),
+        panelid = newdat$yearmonthday,
+        void_non_converging = void_non_converging,
+        logger_failure_msg = "Speed-time classification will not be applied to this track."
+      )
+    }
+
+    
+    #' ----------------------------------------------------------------
+    #' If simpler model fitted successfully, re-fit model with a 30-day window
+    #' interaction term (conditional on over 30 days of data available)
+    if(not_null(fit) & length(unique(dt$day30window))>1){
+      
+      #print("here")
+      
+      # HACK: need to temporarily copy as `fittingData`, so that `update` works
+      fittingData <- newdat
+      
+      fit.int <- try(
+        update(
+          fit,
+          . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots, Boundary.knots = splineParams[[2]]$bd):as.factor(day30window)
+        ), 
+        silent= TRUE)
+      
+      # remove temporary data
+      rm(fittingData)
+      
+      if(!inherits(fit.int, "try-error")){
+        BICfits <- c(BIC(fit), BIC(fit.int))
+        bicid <- which(BICfits == min(BICfits))
+        if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
+          fit <- fit.int
+          logger.info(
+            paste0(
+              "      |> The 30-day-window interaction model outperforms the simpler non-interaction model.\n",
+              "             |> Using the interaction model for speed-time classification."
+            ))
+        }
+      } # end try-error conditional
+    } # end interaction 
+  }
+  
+  #' -------------------------------------------------------------------
+  #' If models have been fitted successfully, calculate confidence intervals and
+  #' generate diagnostic plots
+  if(not_null(fit)){
+    
+    # NOTE: Predicting to full dataset for convenience in data wrangling - i.e. no 
+    # post-processing required to combine predictions for stationary-only events 
+    # with the full data). No apparent cost in terms of computational speed
+    # Non-stationary events will be ignored in the subsequent classification step
+    
+    dt$kmphpreds <- predict(object = fit, newdata = dt) |> as.vector()
+    
+    boots <- suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
+      MRSea::do.bootstrap.cress.robust(
+        model.obj = fit,
+        predictionGrid = dt,
+        B = 1000, robust = TRUE,
+        cat.message = FALSE)
+    )
+    
+    cis <- MRSea::makeBootCIs(boots)
+    
+    # # -- Construct prediction intervals
+    # d = summary(fit)$dispersion
+    # predint <- apply(boots, 2, function(x){rgamma(n = length(x), shape = 1/d, scale= x*d)})
+    # pis <- t(apply(predint, 1, FUN = quantile,probs = c(0.025, 0.975)))
+    
+    dt <- dt %>%
+      mutate(
+        `kmphCI2.5`= cis[,1],
+        `kmphCI97.5` = cis[,2],
+        #"kmphPI2.5" = pis[,1], "kmphPI97.5" = pis[,2]
+      )
+    
+    # build diagnostic plots and export as artifacts
+    if(diag_plots){
+      
+      p_fit <- plot_model_fit(dt, fit)
+      p_acf <- MRSea::runACF(newdat$yearmonthday, fit, suppress.printout = TRUE, printplot = FALSE)
+      #p_acf <- plot_acf(fit)
+      p_resids <- plot_diagnostics(fit, plotting = "r", print = FALSE)
+      p_obs_fit <- plot_diagnostics(fit, plotting = "f", print = FALSE)
+      p_mn_var <- plotMeanVar(fit, print = FALSE, cut.bins = find_cut.bins(fit))
+      
+      #' Next graph involves model updating to more flexible predictor, so
+      #' refitting brings new issues at times. Handling errors and non-convergence
+      #' warnings by skipping the plotting.
+      p_cmltv_rsd <- try_fetch(
+        plot_cmltv_resids(fit, varlist = "hrs_since_sunrise", variableonly = TRUE, print = FALSE),
+        error = \(cnd) grid::textGrob('Cumulative Residuals Plot Not Available'),
+        warning = \(cnd){
+          if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
+            # rlang::cnd_muffle(cnd)
+            grid::textGrob('Cumulative Residuals Plot Not Available')
+          }
+        }
+      )
+      
+      p_diags <- (p_fit + p_resids) / (p_acf + p_obs_fit) / (p_mn_var + p_cmltv_rsd) + 
+        patchwork::plot_annotation(title = paste0("Track ID: ", id), tag_levels = 'A') &
+        theme_bw() & 
+        theme(
+          legend.position = "top", 
+          legend.title = element_blank(),
+          plot.title = element_text(size = 10),
+          plot.tag = element_text(size = 9)
+        )
+      
+      
+      ggplot2::ggsave(
+        filename = appArtifactPath(paste0("speed_hrs_diagnostics - ", id, ".png")),
+        plot = p_diags, 
+        height = 10, width = 11
+      )
+    }
+    
+  } else{
+    
+    dt <- dt |>
+      mutate(
+        kmphpreds = NA,
+        `kmphCI2.5` = NA,
+        `kmphCI97.5` = NA,
+        #`kmphPI2.5` = NA, `kmphPI97.5` = NA
+      )
+  }
+  
+  # drop generated col identifying 30-day windows
+  dt <- dplyr::select(dt, -any_of("day30window"))
+  
+  # Update progress bar, if active
+  if(not_null(pb)){
+    pb()  
+  }
+  
+  if(model_obj){
+    return(list(dt = dt, fit = fit))
+  }else{
+    return(dt)  
+  }
+  
+}
+
+
+
+
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////
+#' Wrapper for SALSA1D fitting, with handling of fitting rrors and non-convergence issues
+#' 
+fit_SALSA <- function(initialModel, 
+                      salsa1dlist, 
+                      fittingData, 
+                      predictionData,
+                      varlist,
+                      panelid = panelid,
+                      void_non_converging,
+                      logger_failure_msg){
+  
+  non_conv_warn <- FALSE
+  fit <- rlang::try_fetch(
+    
+    suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
+      
+      runSALSA1D(
+        initialModel = initialModel,
+        salsa1dlist = salsa1dlist, 
+        varlist = varlist,
+        splineParams=NULL,
+        datain = fittingData,
+        predictionData = predictionData,
+        panelid = panelid,
+        logfile = FALSE,
+        suppress.printout = TRUE)$bestModel
+    ),
+    
+    error = \(cnd){
+      # needed to handle unclosed connection in some error cases of runSALSA1D
+      if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
+      logger.warn(
+        paste0(
+          "      |x Ouch!! Something went wrong while fitting the model.\n",
+          "             |x `runSALSA1D()` returned the following error message:\n",
+          "             |x \"", conditionMessage(cnd), "\"\n",
+          "             |i ", logger_failure_msg
+        ))
+      return(NULL)
+    },
+    
+    # In addition, muffle warnings related with non-converging glm fits, which
+    # are dealt with next
+    warning = \(cnd){
+      if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
+        non_conv_warn <<- TRUE
+        rlang::cnd_muffle(cnd)
+      }
+      rlang::zap()
+    }
+  )
+  
+  # Handling non-converging warnings in fitting of log-Gaussian model.
+  if(not_null(fit) & non_conv_warn == TRUE & void_non_converging == TRUE){
+    
+    #' Refute model if in-built diagnostic indicates non-convergence, 
+    #' and consequently nullify fitted model object
+    if(fit$converged==FALSE){
+      logger.warn(
+        paste0(
+          "      |x Aargh!! Convergence issues found during model fitting.\n",
+          "             |i ", logger_failure_msg
+        )
+      )
+      fit <- NULL
+    }}
+  
+  return(fit)
+}
+
+
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////
+plot_model_fit <- function(dt, fit){
+  
+  int <- ifelse(length(grep("day30window", fit$call)) ==1, TRUE, FALSE)
+  
+  dt |> 
+    as_tibble() |> 
+    distinct(hrs_since_sunrise, .keep_all = TRUE) |> 
+    mutate(
+      ci_lbl = "95% Confidence Interval",
+      fitted_lbl = "Expected Value",
+      int = ifelse(int, day30window, 1)
+    ) |> 
+    ggplot(aes(x = hrs_since_sunrise, group=int)) +
+    geom_ribbon(aes(ymin = kmphCI2.5, ymax = kmphCI97.5, fill = ci_lbl), alpha = 0.5) +
+    geom_line(aes(y = kmphpreds, col = fitted_lbl), linewidth = 1) +
+    geom_rug(sides = "b") +
+    # add stationary points with speeds above the upper boundary of the 95% CI
+    geom_point(
+      data = dt |> filter(kmph > kmphCI97.5, stationary == 1),
+      aes(y = kmph),
+      col= "red", alpha = 1/4, size = 1
+    ) +
+    scale_fill_manual(values = "#90CAF9") +
+    scale_colour_manual(values = "black") +
+    # add selected knots in fitted model
+    geom_vline(
+      xintercept = fit$splineParams[[2]]$knots, colour = "gray20", 
+      linetype = "dashed", linewidth = 0.5)
+} 
+
+
+#' #' /////////////////////////////////////////////////////////////////////////////////////////////
+#' # Adapted from https://stackoverflow.com/questions/17788859/acf-plot-with-ggplot2-setting-width-of-geom-bar
+#' plot_acf <- function(fit, alpha = 0.05){
+#'   
+#'   pears_resids <- residuals(fit, type="pearson")
+#'   acf_out <- acf(pears_resids, plot = FALSE)
+#'   acf_dt <- with(acf_out, tibble(lag, acf))
+#'   
+#'   # CI for alpha
+#'   lim1 <- qnorm((1 + (1 - alpha))/2)/sqrt(acf_out$n.used)
+#'   lim0 <- -lim1
+#'   
+#'   ggplot(data = acf_dt, aes(x = lag, y = acf)) +
+#'     geom_hline(aes(yintercept = 0)) +
+#'     geom_segment(aes(xend = lag, yend = 0)) +
+#'     labs(
+#'       y = "Autocorrelation in Pearson Residuals", 
+#'       #y = "ACF"
+#'     ) +
+#'     geom_hline(aes(yintercept = lim1), linetype = 2, color = 'blue') +
+#'     geom_hline(aes(yintercept = lim0), linetype = 2, color = 'blue')
+#'   
+#' }
+#' 
+
+
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////
+#'  Hacked from MRSea::runDiagnostics() to offer the option of returning plot objects (`print`)
+#'  
+plot_diagnostics <-function(model, plotting='b', save=FALSE, print = TRUE, label = NULL){
+  
+  p_theme <- theme_bw() +
+    theme(
+      panel.grid.major=element_blank(), 
+      axis.text.x=element_text(size=10), 
+      axis.text.y=element_text(size=10), 
+      axis.title.x=element_text(size=12), 
+      axis.title.y=element_text(size=12)
+    )
+  
+  df <- data.frame(
+    fits = fitted(model),
+    response = model$y)
+  
+  # Set printing action
+  if(print & plotting =='b'){
+    devAskNewPage(ask=TRUE)
+  }
+  
+  if(plotting =='b' | plotting=='f'){
+    
+    #Assessing predictive power
+    #r-squared:
+    r2 <- 1-(sum((df$response - df$fits)**2)/sum((df$response - mean(df$response))**2))
+    
+    #concordance correlation
+    num <- 2*sum((df$response - mean(df$response))*(df$fits - mean(fitted(model))))
+    den <- sum((df$response - mean(df$response))**2) + sum((df$fits - mean(df$fits))**2)
+    rc <-num/den
+    
+    f <- ggplot(df) + 
+      geom_point(aes(response, fits), alpha=0.15) + 
+      geom_abline(intercept=0, slope=1) + 
+      labs(
+        x='Observed Values', 
+        y='Fitted Values', 
+        title=paste("Concordance correlation: ", 
+                       round(rc,4), "\nMarginal R-squared value: ", 
+                       round(r2,4), sep="")
+      ) +
+      p_theme
+    
+    if(save) ggsave(paste0(label, "FitPlots_fitted.png"), f, height=6, width=8)
+    if(print) plot(f)
+  }
+  
+  if(plotting =='b' | plotting=='r'){
+    
+    scaledRes <- residuals(model, type="response")/
+      sqrt(family(model)$variance(fitted(model))*as.numeric(summary(model)$dispersion[1]))
+    
+    sm <- lowess(fitted(model), scaledRes)
+    
+    df <- df |> 
+      dplyr::mutate(
+        res=scaledRes, 
+        smx=sm$x, 
+        smy=sm$y
+      )
+    
+    r <- ggplot(df) + 
+      geom_point(aes(fits, res), alpha=0.15)+ 
+      geom_line(aes(smx, smy), col='red') + 
+      geom_abline(intercept=0, slope=0) + 
+      labs(x='Fitted Values', y='Scaled Pearsons Residuals') +
+      p_theme
+    
+    if(save) fgsave(paste0(label, "FitPlots_resids.png"), r, height=6, width=8)
+    if(print) plot(r)
+  }
+  
+  if(!print){
+    if(plotting=='b'){
+      return(list(obs_vs_fitted = f, scaled_resids = r))
+    } else if(plotting=='f'){
+      return(f)
+    } else if(plotting=='r'){
+      return(r)
+    }
+  }else{
+    devAskNewPage(ask=FALSE)
+    return(invisible())
+  }
+}
+
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////
+#'  Hacked from MRSea::plotCumRes() to add option of returning plot objects (`print`).
+#'  Required replacing loop with imap() to deal with scoping issues with using
+#'  loops and ggplots
+plot_cmltv_resids <- function(model, varlist = NULL, print = TRUE, save = FALSE, 
+                              label = "", variableonly = FALSE){
+  
+  require(splines)
+  
+  if (is.null(varlist)) {
+    namesOfx <- c(c("Predicted", "Index"))
+  }
+  else {
+    namesOfx <- c(varlist, c("Predicted", "Index"))
+  }
+  
+  md_cls <- class(model)[1]
+  if (md_cls %in% c("geeglm", "glm", "gamMRSea")) dat <- data.frame(model$data)
+  if (md_cls == "gam")  dat <- data.frame(model$model)
+  
+  if (!is.null(varlist)) {
+    coefpos <- c()
+    for (z in 1:(length(namesOfx) - 2)) {
+      coefpos <- c(coefpos, grep(namesOfx[z], names(dat)))
+    }
+  }
+  
+  dat <- dat %>% mutate(Predicted = fitted(model), Index = 1:n())
+  
+  if (variableonly) plotvar <- varlist else plotvar <- namesOfx
+  
+  p_out <- purrr::imap(plotvar, \(varname, z){
+    
+    type = "response"; yl <- "Response Residuals"
+    
+    if (varname == "Predicted") {
+      type = "response"
+      yl = "Response Residuals"
+    }
+    
+    plotdat <- dat %>% mutate(m.resids = residuals(model, type = type), resids.lbl = "resids")
+    plotdat <- eval(parse(text = paste0("arrange(plotdat, ", varname, ")")))
+    plotdat <- plotdat %>% mutate(m.cumsum = cumsum(m.resids), cumsum.lbl = "cmltv_rsd")
+    
+    if (z < (length(namesOfx) - 1)) {
+      covardat <- dat[model$y > 0, coefpos[z]]
+      newknots <- as.vector(quantile(covardat, seq(0.05, 0.95, length = 7)))
+      newknots <- unique(newknots)
+      term <- labels(terms(model))[grep(namesOfx[z], labels(terms(model)))]
+      newterm <- paste("bs(", namesOfx[z], ", knots= c(",
+                       paste(newknots, sep = " ", collapse = ","), "))",
+                       sep = "")
+      eval(parse(text = paste("covarModelUpdate<-update(model, .~. -",
+                              term, " +", newterm, ", data=plotdat)", sep = "")))
+      plotdat <- plotdat %>% 
+        mutate(
+          new.fits = fitted(covarModelUpdate),
+          new.resids = residuals(covarModelUpdate, type = type),
+          new.cumsum = cumsum(new.resids),
+          new.cumsum.lbl = "cmltv_rsd_flex"
+        )
+    }
+    
+    maxy <- max(plotdat$m.resids, plotdat$m.cumsum)
+    miny <- min(plotdat$m.resids, plotdat$m.cumsum)
+    
+    plt <- ggplot(plotdat) +
+      geom_point(aes(x = pull(plotdat, varname), y = m.resids, colour = resids.lbl)) +
+      xlab(varname) +
+      ylab(yl) +
+      geom_line(aes(x = pull(plotdat, varname), y = m.cumsum, colour = cumsum.lbl)) +
+      geom_hline(yintercept = 0) +
+      labs(x = varname, y = yl) +
+      theme_bw()
+    
+    if (z < (length(namesOfx) - 1)) {
+      plt <- plt +
+        geom_line(
+          aes(x = pull(plotdat, varname), y = new.cumsum, colour = new.cumsum.lbl)) +
+        geom_point(
+          aes(x = pull(plotdat, varname), y = new.resids, colour = new.cumsum.lbl),
+          alpha = 1/5)
+    }
+    plt +
+      scale_colour_manual(
+        values = c(resids ="turquoise4", cmltv_rsd = "black", cmltv_rsd_flex = "grey"),
+        breaks= c("resids", "cmltv_rsd", "cmltv_rsd_flex"),
+        name = "",
+        labels = c("Residuals", "Cumulative\n Residuals", "Cumulative Residuals under\nhigher model flexibility")
+      ) +
+      theme(legend.position="top")
+  })
+  
+  if(save){
+    iwalk(p_out, 
+          ~ggsave(filename = paste("CumRes_", namesOfx[.y], label, ".png", sep = ""),
+                  plot = .x, height = 600, width = 700, units = "px"))
+  }
+  
+  if(print){
+    devAskNewPage(ask = TRUE)
+    print(p_out)  
+    devAskNewPage(ask = FALSE)
+    invisible()
+  }else{
+    if(length(p_out) == 1){
+      p_out <- p_out[[1]]
+    } else{
+      names(p_out) <- plotvar
+    }
+    return(p_out)
+  }
+  
+}
+
+
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////
+#' Helper function to find the a suitable value for parameter `cut.bins` for
+#' function MRSea::plotMeanVar().
+#' 
+#' This is required to automate the generation of that plot, i.e. in a
+#' non-interactive session such as MoveApps
+find_cut.bins <- function(model){
+  
+  cut.bins <- 30
+  nainthahouse <- TRUE
+  
+  while(nainthahouse){
+    cutpts <- unique(quantile(fitted(model), prob = seq(0, 1, length = cut.bins)))
+    mycuts <- cut(fitted(model), breaks = cutpts)
+    meanfits <- tapply(fitted(model), mycuts, mean)
+    nainthahouse <- any(is.na(meanfits))
+    if(nainthahouse) cut.bins <- cut.bins - 1
+  }
+  
+  cut.bins
+}
+

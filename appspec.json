@@ -2,43 +2,43 @@
   "settings": [
     {
       "id": "travelcut",
-      "name": "Upper speed bound for 'stationary' behaviour",
-      "description": "Insert the upper speed cutoff (in km/h) for behaviour to be classified as 'stationary'. ",
+      "name": "Upper speed bound for 'stationary' behaviour (km/h)",
+      "description": "Insert the upper speed cutoff for behaviour to be classified as 'stationary'.",
       "defaultValue": 3,
+      "type": "DOUBLE"
+    },
+        {
+      "id": "altbound",
+      "name": "Altitude change threshold (metres):",
+      "description": "The absolute change in altitude between consecutive locations beyond which a bird is considered as ascending/descending. For example, setting this to 25 means that the bird is ascending when its change in altitude exceeds 25m, and descending when it falls below -25m. This setting is used only if column `altitude` is present in the input data.",
+      "defaultValue": 25,
       "type": "DOUBLE"
     },
     {
       "id": "sunrise_leeway",
-      "name": "Sunrise leeway (minutes):",
-      "description": "This is the number of minutes before/after sunrise that 'daytime' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunrise; positive numbers move it after).",
+      "name": "Sunrise leeway (minutes)",
+      "description": "Defines the number of minutes before/after **sunrise** marking the start of the 'daytime' period. Negative values (e.g. -5 minutes) move this window before sunrise, while positive numbers indicate a shift after. Used to determine the potential end of the roosting period.",
       "defaultValue": 0,
       "type": "INTEGER"
     },
     {
       "id": "sunset_leeway",
-      "name": "Sunset leeway (minutes):",
-      "description": "This is the number of minutes before/after sunset that 'night-time' is considered to begin. (Negative numbers, e.g. -5 minutes, move this window before sunset; positive numbers move it after).",
+      "name": "Sunset leeway (minutes)",
+      "description": "Defines the number of minutes before/after **sunset** marking the start of the 'night-time' period. Negative numbers move this window before sunset; positive numbers move it after. Used to define the potential start of the roosting period. Stationary behaviour after this time, and before the next determined *daytime*, is considered as roosting.",
       "defaultValue": 0,
       "type": "INTEGER"
     },
     {
-      "id": "altbound",
-      "name": "Altitude change threshold (metres):",
-      "description": "This is the absolute change in altitude between consecutive locations beyond which a bird is considered as ascending/descending. For example, setting this to 25 means that the bird is ascending when its change in altitude is above 25m, and descending when below -25m. This setting is only used if column `altitude` is present in the input data.",
-      "defaultValue": 25,
-      "type": "DOUBLE"
-    },
-    {
       "id": "create_plots",
       "name": "Create summary plots",
-      "description": "Check this to generate, as artefacts, simple location plots of each bird's behaviourally-classified movements",
-      "defaultValue": false,
+      "description": "Select this option to generate, as artefacts, bird-specific graphs with: (i) location plots of behaviourally-classified movements; and (ii) diagnostic plots for the stationary-speed given hours-since-sunrise model.",
+      "defaultValue": true,
       "type": "CHECKBOX"
     },
     {
       "id": "keepAllCols",
-      "name": "Keep all generated columns:",
-      "description": "Select this to keep all generated columns. This stores all data used within the classification outputs within the output. We recommend that this is only selected for debugging.",
+      "name": "Keep all generated columns",
+      "description": "Select this option to keep all columns created during the classification process. Recommend for debugging purposes only.",
       "defaultValue": false,
       "type": "CHECKBOX"
     }
@@ -70,9 +70,6 @@
         "name": "units"
       },
       {
-        "name": "stringr"
-      },
-      {
         "name": "tidyr"
       },
       {
@@ -86,6 +83,30 @@
       },
       {
         "name": "MRSea"
+      },
+      {
+        "name": "furrr"
+      },
+      {
+        "name": "future"
+      },
+      {
+        "name": "progressr"
+      },
+      {
+        "name": "patchwork"
+      },
+      {
+        "name": "splines"
+      },
+      {
+        "name": "rlang"
+      },
+      {
+        "name": "grid"
+      },
+      {
+        "name": "sandwich"
       }
     ]
   },
