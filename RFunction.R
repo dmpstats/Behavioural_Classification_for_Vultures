@@ -996,7 +996,7 @@ speed_time_model <- function(dt,
       
       dt$day30window <- NA
       for(i in 1:nrow(cutdataf)){
-        dt$day30window <- ifelse(between(dt$timestamp, cutdataf$start[i], cutdataf$end[i]), cutdataf$cut[i], dt$day30window)
+        dt$day30window <- ifelse(dplyr::between(dt$timestamp, cutdataf$start[i], cutdataf$end[i]), cutdataf$cut[i], dt$day30window)
       }  
       
       # check that each window has more than 10 days
@@ -1008,36 +1008,36 @@ speed_time_model <- function(dt,
         
         daycheck <- dt %>%
           as_tibble() %>%
-          group_by(day30window) %>%
-          summarise(n = n(),
+          dplyr::group_by(day30window) %>%
+          dplyr::summarise(n = n(),
                     ndays = length(unique(yearmonthday)),
-                    mindate = first(timestamp),
-                    maxdate = last(timestamp)
+                    mindate = dplyr::first(timestamp),
+                    maxdate = dplyr::last(timestamp)
           ) %>%
-          left_join(cutdataf, by = c("day30window" = "cut")) %>%
-          mutate(
+          dplyr::left_join(cutdataf, by = c("day30window" = "cut")) %>%
+          dplyr::mutate(
             # end time of previous window 
             #(`default` set so that 1st window always merges to 2nd window)
-            end_prev = lag(end, default = as.POSIXct("2000-01-01 00:00:00")),
+            end_prev = dplyr::lag(end, default = as.POSIXct("2000-01-01 00:00:00")),
             # start time of next window 
             #(`default` set so that last window always merges to penultimate window)
-            start_next = lead(start, default = as.POSIXct("2222-01-01 00:00:00")),
+            start_next = dplyr::lead(start, default = as.POSIXct("2222-01-01 00:00:00")),
             # set up potential ids to merge to 
-            mergeid = ifelse((mindate - end_prev) < (start_next - maxdate), lag(day30window), lead(day30window))
+            mergeid = ifelse((mindate - end_prev) < (start_next - maxdate), dplyr::lag(day30window), dplyr::lead(day30window))
           )
         
         # 1st window with less than 10 days
-        under10wind <- filter(daycheck, ndays < 10) |> first()
+        under10wind <- dplyr::filter(daycheck, ndays < 10) |> slice(1)
         
         if(nrow(under10wind)>0){
           dt <- dt |>
-            mutate(day30window = ifelse(day30window  == under10wind$day30window, under10wind$mergeid, day30window))
+            mutate(day30window = ifelse(day30window == under10wind$day30window, under10wind$mergeid, day30window))
         }
         
         # merge time windows by overwriting to merge window id
         flagcheck <- dt %>% 
-          group_by(day30window) %>% 
-          summarise(ndays = length(unique((yearmonthday))))
+          dplyr::group_by(day30window) %>% 
+          dplyr::summarise(ndays = length(unique((yearmonthday))))
         
         flag <- ifelse(any(flagcheck$ndays<10), 1, 0)
       }
