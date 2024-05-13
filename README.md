@@ -6,13 +6,14 @@ Github repository: *https://github.com/dmpstats/Behavioural_Classification_for_V
 
 ## Description
 
-This MoveApp applies a simple behavioural classification to bird data. It classifies behaviour into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. These four behaviours may be used in an additional MoveApp for clustering (e.g. to find feeding locations).
+This MoveApp applies a movement-based behavioural classification to bird tracking data, categorizing location events into one of four classes: `Feeding`, `Roosting`, `Resting` and `Travelling`. These four behaviours may be used in an downstream App for clustering locations (e.g. to find feeding spots).
 
 ## Documentation
 
-**[Section to be updated to include changes to classification process]**
+**[A detailed description of the classification process will soon be provided here]**
 
-Behavioural classification is performed on GPS location data with the option to incorporate altitude data. The first stage of classification is based on speed, and predicts one of three behaviours:
+
+<!-- Behavioural classification is performed on GPS location data with the option to incorporate altitude data. The first stage of classification is based on speed, and predicts one of three behaviours:
 
 -   Speed below the travelling threshold and timestamp within roosting hours: `Roosting`
 -   Speed below the travelling threshold and timestamp outside of roosting hours: `Resting`
@@ -29,6 +30,7 @@ If altitude information is available, reclassification is performed. This requir
 
 `Feeding` behaviour is exclusively classified based on runs of stationary behaviour. Locations within the highest 5th percentile of cumulative time spent stationary are reclassified as `Feeding`.
 
+-->
 
 <!-- ### Future plans -->
 
@@ -40,7 +42,11 @@ If altitude information is available, reclassification is performed. This requir
 
 
 
-<!-- Perhaps add a Requirements Section, where dependency on Solar time App  would be clearly stated ???-->
+### MoveApps Worflow Dependencies
+
+This App is strictly dependent on the prior deployment of the App ['Add Local and Solar Time'](https://www.moveapps.org/apps/browser/43272925-cd24-466f-bcb9-844a09f1806b) ([Readme](https://github.com/movestore/Convert-Times)) in the workflow.
+
+
 
 ### Input data
 
@@ -63,41 +69,45 @@ Move2 location object, with the following key columns in the event dataset:
 
 -   `behavsummary.csv` - A .csv object summarising the classification output. For each track/bird, the total number of locations assigned to each behavioural group (`SFeeding`, `SResting`, `SRoosting`, `STravelling`).
 
-- If Setting `Create Plots` is selected, for each track/bird ID whithin the input data:
+- If Setting `Create Plots` is selected, two files are generated for each track/bird ID whithin the input data:
 
-  1. `birdtrack_(track ID).png` - a plot of the animal's movements (with behavioural classification overlaid);
-  2. `speed_hrs_diagnostics - (track ID).png` - a set of diagnostic plots assessing the fitted model describing the stationary-speed given hours-since-sunrise relationship required for the speed-time classification step.
+  1. *birdtrack_(track ID).png* - a plot of the animal's movements (with behavioural classification overlaid);
+  
+  2. *speed_hrs_diagnostics - (track ID).png* - a set of diagnostic plots assessing the fitted model describing the stationary-speed given hours-since-sunrise relationship required for the speed-time classification step.
 
 
 
 ### Settings
 
-`Upper speed bound for Stationary Behaviour` (`travelcut`): Numeric, the speed (in km/h) beyond which this species is assumed to be travelling. Default is 3 km/h.
+**Upper speed bound for Stationary Behaviour** (`travelcut`): Numeric, the speed beyond which this species is assumed to be travelling (unit: km/h). Default is 3 km/h.
 
-`Altitude change threshold` (`altbound`): Numeric, the absolute change in altitude (in metres) beyond which a bird is assumed to have significant altitude change. For example, a threshold of 25m means that a bird whose altitude increases by over 25m is assumed to be `ascending`, and `descending` if its altitude decreases by over 25m. This setting is only used if column `altitude` is present in the input data.
+**Altitude change threshold** (`altbound`): Numeric, absolute change in altitude between consecutive locations (in meters) beyond which a bird is considered as ascending/descending. For example, setting this to 25 means that the bird is `ascending` when its change in altitude exceeds 25m, and `descending` when it falls below -25m. This setting is used only if column `altitude` is present in the input data.
 
-`Sunrise leeway` (`sunrise_leeway`): Integer, the number of minutes after (or before, if negative) that *daytime* is considered to begin. *Daytime* is the period in which stationary behaviour is **not** classified as *Roosting*. For example `Sunrise leeway = 10` means that the bird's roost is assumed to end 10 minutes *after* sunrise.
+**Sunrise leeway** (`sunrise_leeway`): Integer, defines the number of minutes before/after **sunrise** marking the start of the 'daytime' period. Negative values (e.g. -5 minutes) move this window before sunrise, while positive numbers indicate a shift after. Used to determine the potential end of the roosting period. Stationary behaviour after this time is classified as resting.
 
-`Sunset leeway` (`sunset_leeway`): Integer, the equivalent of `Sunrise leeway` for sunset, and determines what time *night-time,* or roosting hours, begin. Stationary behaviour after this time, and before the next determined *daytime*, is classified as *Roosting.*
+**Sunset leeway** (`sunset_leeway`): Integer, defines the number of minutes before/after **sunset** marking the start of the 'night-time' period. Negative numbers move this window before sunset; positive numbers move it after. Used to define the potential start of the roosting period.
 
-`Create Plots` (`create_plots`): Select this option to generate, as artefacts, bird-specific graphs with location plots of behaviourally-classified movements, and diagnostic plots for the stationary-speed given hours-since-sunrise model.
+**Create Plots** (`create_plots`): Select this option to generate, as artefacts, bird-specific graphs with location plots of behaviourally-classified movements, and diagnostic plots for the stationary-speed given hours-since-sunrise model.
 
-`Keep all generated columns` (`keepAllCols`): Select this option to keep all columns created during the classification process. We recommend that this is selected for debugging purposes only.
+**Keep all generated columns** (`keepAllCols`): Select this option to keep all columns created during the classification process. Recommend for debugging purposes only.
 
 
+
+<!-- #### Further Considerations
+-->
 
 
 ### Most common errors
 
 -   This MoveApp is designed for species that roost at night. If the species is nocturnal, classifications will be inaccurate or unable to be calculated.
 
--   This App relies completely on MoveApp [**Add Local and Solar Time MoveApp**](https://github.com/movestore/Convert-Times/tree/20a1370a9cc3668a2e2034eb49d4155038cb2182) being deployed earlier in the Workflow to ensure essential columns  `sunrise_timestamp` and `sunset_timestamp` available to classification. If these columns are not detected in the input dataset, the App with exit abruptly and throw an error.
+-   This App relies completely on eApp ['Add Local and Solar Time MoveApp'](https://github.com/movestore/Convert-Times/tree/20a1370a9cc3668a2e2034eb49d4155038cb2182) being deployed earlier in the Workflow to ensure essential columns  `sunrise_timestamp` and `sunset_timestamp` available for the classification process. If these columns are not detected in the input dataset, the App will exit abruptly and throw an error.
 
 
 ### Null or error handling
 
--   Setting `Upper Speed Bound for Stationary Behaviour`: If less than zero, the input is returned with a warning.
+- Setting **Upper Speed Bound for Stationary Behaviour** or **Altitude change threshold** to `NULL` or less than zero, the App exits abruptly and throws an error.
 
--   Empty datasets are returned with a warning (there is nothing to classify).
+- Empty datasets are returned with a warning (there is nothing to classify).
 
 <!-- -   If an individual has fewer than 10 associated locations within the input data, the second-stage classification is not performed. More data is required for accurate classification, and small datasets can cause inconsistencies during reclassification -->
