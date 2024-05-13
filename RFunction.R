@@ -40,7 +40,6 @@ rFunction = function(data,
   #'   - make use of 'dplyr::' consistent
   #'   - drop "ID" and "timestamp" redefinition and use "mt_" functions instead
   #'   - improve error messages with {rlang}
-  #'   - add timestamps to logger
   
   
   ## Globals --------------------------------------
@@ -197,16 +196,15 @@ rFunction = function(data,
   #' NOTE:`timediff_hrs`, `dist_m` & `kmph` are variables expected to provide
   #' information between consecutive locations. If the Standardizing App (or
   #' other) has been used earlier in the WF, these cols could already be present
-  #' in the input. However, there is no guarantee that data coming as input has
-  #' been thinned by other in-between App. Therefore, to ensure accuracy, we
-  #' always (re)generate these columns here.
+  #' in the input. However, there is no guarantee input data has not been
+  #' thinned by other in-between App. For insurance, we (re)generate these 
+  #' columns here.
   data %<>% 
     mutate(
       timediff_hrs = as.vector(mt_time_lags(., units = "hours")),
       kmph = as.vector(mt_speed(., units = "km/h")),
       dist_m = as.vector(mt_distance(., units = "m"))
     ) 
-  
 
   ### Identify stationary points -----------------------------------
   
