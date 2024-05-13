@@ -10,7 +10,7 @@ This MoveApp applies a movement-based behavioural classification to bird trackin
 
 ## Documentation
 
-**[A detailed description of the classification process will soon be provided here]**
+*[A detailed description of the classification process will soon be provided here]*
 
 
 <!-- Behavioural classification is performed on GPS location data with the option to incorporate altitude data. The first stage of classification is based on speed, and predicts one of three behaviours:
