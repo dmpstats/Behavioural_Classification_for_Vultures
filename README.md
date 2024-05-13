@@ -83,9 +83,9 @@ Move2 location object, with the following key columns in the event dataset:
 
 **Altitude change threshold** (`altbound`): Numeric, absolute change in altitude between consecutive locations (in meters) beyond which a bird is considered as ascending/descending. For example, setting this to 25 means that the bird is `ascending` when its change in altitude exceeds 25m, and `descending` when it falls below -25m. This setting is used only if column `altitude` is present in the input data.
 
-**Sunrise leeway** (`sunrise_leeway`): Integer, defines the number of minutes before/after **sunrise** marking the start of the 'daytime' period. Negative values (e.g. -5 minutes) move this window before sunrise, while positive numbers indicate a shift after. Used to determine the potential end of the roosting period. Stationary behaviour after this time is classified as resting.
+**Sunrise leeway** (`sunrise_leeway`): Integer, defines the number of minutes before/after **sunrise** marking the start of the 'daytime' period. Negative values (e.g. -5 minutes) move this window before sunrise, while positive numbers indicate a shift after. Used to determine the potential end of the roosting period.
 
-**Sunset leeway** (`sunset_leeway`): Integer, defines the number of minutes before/after **sunset** marking the start of the 'night-time' period. Negative numbers move this window before sunset; positive numbers move it after. Used to define the potential start of the roosting period.
+**Sunset leeway** (`sunset_leeway`): Integer, defines the number of minutes before/after **sunset** marking the start of the 'night-time' period. Negative numbers move this window before sunset; positive numbers move it after. Used to define the potential start of the roosting period. Stationary behaviour after this time, and before the next determined *daytime*, is considered as roosting.
 
 **Create Plots** (`create_plots`): Select this option to generate, as artefacts, bird-specific graphs with location plots of behaviourally-classified movements, and diagnostic plots for the stationary-speed given hours-since-sunrise model.
 

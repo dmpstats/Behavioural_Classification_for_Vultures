@@ -17,14 +17,14 @@
     {
       "id": "sunrise_leeway",
       "name": "Sunrise leeway (minutes)",
-      "description": "Defines the number of minutes before/after **sunrise** marking the start of the 'daytime' period. Negative values (e.g. -5 minutes) move this window before sunrise, while positive numbers indicate a shift after. Used to determine the potential end of the roosting period. Stationary behaviour after this time is classified as resting.",
+      "description": "Defines the number of minutes before/after **sunrise** marking the start of the 'daytime' period. Negative values (e.g. -5 minutes) move this window before sunrise, while positive numbers indicate a shift after. Used to determine the potential end of the roosting period.",
       "defaultValue": 0,
       "type": "INTEGER"
     },
     {
       "id": "sunset_leeway",
       "name": "Sunset leeway (minutes)",
-      "description": "Defines the number of minutes before/after **sunset** marking the start of the 'night-time' period. Negative numbers move this window before sunset; positive numbers move it after. Used to define the potential start of the roosting period.",
+      "description": "Defines the number of minutes before/after **sunset** marking the start of the 'night-time' period. Negative numbers move this window before sunset; positive numbers move it after. Used to define the potential start of the roosting period. Stationary behaviour after this time, and before the next determined *daytime*, is considered as roosting.",
       "defaultValue": 0,
       "type": "INTEGER"
     },
