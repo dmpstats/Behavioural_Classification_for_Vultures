@@ -511,7 +511,7 @@ rFunction = function(data,
   #' setting parallel processing using availableCores() to set # workers.
   #' {future} imports that function from {parallelly}, which is safe to use in
   #' container environments (e.g. Docker)
-  future::plan("cluster", workers = future::availableCores(omit = 2))
+  future::plan("cluster", workers = future::availableCores(omit = 1))
   
   progressr::with_progress({
     # initiate progress signaler
