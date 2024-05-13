@@ -95,7 +95,10 @@ rFunction = function(data,
                "ANY change is altitude will be considered as ascencing/descending ",
                "movement.")
       )
-    }  
+    }
+    
+    # set with expected units (meters)
+    altbound <- units::set_units(altbound, "m")
   } 
   
   
@@ -110,11 +113,15 @@ rFunction = function(data,
   }
   
   
-  ### Input data: time-related columns -----
+  ### Input data: relevant columns -----
+  
   if("altitude" %!in% colnames(data)){
     logger.warn(" |- Column `altitude` is absent from input data.")
   } else{
     logger.info(" |- `altitude` column identified. Able to detect altitude changes.")
+    
+    # ensure `altitude` is in meters
+    data$altitude <- units::set_units(data$altitude, "m")
   }
   
   
@@ -239,10 +246,7 @@ rFunction = function(data,
         # Reset altitude change each day:
         group_by(ID, yearmonthday) %>%
         dplyr::mutate(
-          altitude = as.numeric(altitude), # fix when input is character vector
-          
           altdiff = dplyr::lead(altitude) - altitude,
-          
           altchange = case_when(
             altdiff < -altbound ~ "descent",
             altdiff > altbound ~ "ascent",
