@@ -1,18 +1,19 @@
 # Expected classification outcome has not changed
 
     structure(list(behav = c("95%" = "SFeeding", "95%" = "SResting", 
-    "95%" = "SRoosting", "95%" = "STravelling"), n = c(202L, 626L, 
+    "95%" = "SRoosting", "95%" = "STravelling"), n = c(205L, 623L, 
     276L, 519L)), class = c("tbl_df", "tbl", "data.frame"), row.names = c(NA, 
     -4L), sf_column = "geometry", agr = structure(c(track = NA_integer_, 
     timestamp = NA_integer_, temperature = NA_integer_, heading = NA_integer_, 
     altitude = NA_integer_, index = NA_integer_, hour = NA_integer_, 
     min = NA_integer_, secs = NA_integer_, hourmin = NA_integer_, 
     yearmonthday = NA_integer_, timediff_hrs = NA_integer_, kmph = NA_integer_, 
-    dist_m = NA_integer_, lon = NA_integer_, lat = NA_integer_, local_tz = NA_integer_, 
-    hrs_since_sunrise = NA_integer_, stationary = NA_integer_, nightpoint = NA_integer_, 
-    RULE = NA_integer_, behav = NA_integer_, revcum_trav = NA_integer_, 
-    runtime = NA_integer_, dayRunThresh = NA_integer_, kmphCI97.5 = NA_integer_
-    ), levels = c("constant", "aggregate", "identity"), class = "factor"), time_column = "timestamp", track_id_column = "track", track_data = structure(list(
+    dist_m = NA_integer_, lon = NA_integer_, lat = NA_integer_, sunrise_timestamp = NA_integer_, 
+    sunset_timestamp = NA_integer_, local_tz = NA_integer_, hrs_since_sunrise = NA_integer_, 
+    stationary = NA_integer_, nightpoint = NA_integer_, RULE = NA_integer_, 
+    behav = NA_integer_, revcum_trav = NA_integer_, runtime = NA_integer_, 
+    dayRunThresh = NA_integer_, kmphCI97.5 = NA_integer_), levels = c("constant", 
+    "aggregate", "identity"), class = "factor"), time_column = "timestamp", track_id_column = "track", track_data = structure(list(
         individual.local.identifier = c("SAV-4355-B", "SAV-4386-A", 
         "SAV-4360-A"), visible = c("true", "true", "true"), individual.id = c(2806114234, 
         2790877630, 2601765050), deployment.id = c(2806115210, 2790877801, 
@@ -49,19 +50,19 @@
 ---
 
     structure(list(behav = c("95%" = "SFeeding", "95%" = "SResting", 
-    "95%" = "SRoosting", "95%" = "STravelling"), n = c(146L, 964L, 
+    "95%" = "SRoosting", "95%" = "STravelling"), n = c(196L, 914L, 
     599L, 1673L)), class = c("tbl_df", "tbl", "data.frame"), row.names = c(NA, 
     -4L), sf_column = "geometry", agr = structure(c(track = NA_integer_, 
     timestamp = NA_integer_, temperature = NA_integer_, heading = NA_integer_, 
     altitude = NA_integer_, index = NA_integer_, hour = NA_integer_, 
     min = NA_integer_, secs = NA_integer_, hourmin = NA_integer_, 
     yearmonthday = NA_integer_, timediff_hrs = NA_integer_, kmph = NA_integer_, 
-    dist_m = NA_integer_, lon = NA_integer_, lat = NA_integer_, local_tz = NA_integer_, 
-    hrs_since_sunrise = NA_integer_, stationary = NA_integer_, altchange = NA_integer_, 
-    nightpoint = NA_integer_, RULE = NA_integer_, behav = NA_integer_, 
-    revcum_trav = NA_integer_, runtime = NA_integer_, dayRunThresh = NA_integer_, 
-    kmphCI97.5 = NA_integer_), levels = c("constant", "aggregate", 
-    "identity"), class = "factor"), time_column = "timestamp", track_id_column = "track", track_data = structure(list(
+    dist_m = NA_integer_, lon = NA_integer_, lat = NA_integer_, sunrise_timestamp = NA_integer_, 
+    sunset_timestamp = NA_integer_, local_tz = NA_integer_, hrs_since_sunrise = NA_integer_, 
+    stationary = NA_integer_, altchange = NA_integer_, nightpoint = NA_integer_, 
+    RULE = NA_integer_, behav = NA_integer_, revcum_trav = NA_integer_, 
+    runtime = NA_integer_, dayRunThresh = NA_integer_, kmphCI97.5 = NA_integer_
+    ), levels = c("constant", "aggregate", "identity"), class = "factor"), time_column = "timestamp", track_id_column = "track", track_data = structure(list(
         individual.local.identifier = c("ST1008A", "C175593", "ST1035A", 
         "ST1104A", "A234556"), visible = c("true", "true", "true", 
         "true", "true"), individual.id = c(3056464147, 2148018905, 
@@ -115,7 +116,7 @@
 
 ---
 
-    structure(c(SFeeding = 263L, SResting = 328L, SRoosting = 489L, 
+    structure(c(SFeeding = 261L, SResting = 330L, SRoosting = 489L, 
     STravelling = 797L), dim = 4L, dimnames = structure(list(c("SFeeding", 
     "SResting", "SRoosting", "STravelling")), names = ""), class = "table")
 

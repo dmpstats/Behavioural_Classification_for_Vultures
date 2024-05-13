@@ -16,10 +16,14 @@ app_key <- get_app_key()
 test_dt <- secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key))
 test_dt$metadata
 
-
 # thinning gaia and nam dataset for 5mins gap for faster testing. 
 test_dt$gaia <- mt_filter_per_interval(test_dt$gaia, unit = "5 min")
 test_dt$nam_sop <- mt_filter_per_interval(test_dt$nam_sop, unit = "5 min")
+
+
+
+# loading test sets with 3-month worth of data
+test_dt_3mths <- secret_read_rds("data/raw/testset_3mths.rds", key = I(app_key))
 
 
 # ---------------------------------------- #
@@ -51,6 +55,7 @@ out <- rFunction(
   keepAllCols = TRUE
 )
 
+
 out <- rFunction(
   data = test_dt$nam_sop,
   travelcut = 3,
@@ -71,6 +76,7 @@ out <- rFunction(
   altbound = 25,
   keepAllCols = TRUE
 )
+
 
 
 out <- rFunction(
@@ -105,6 +111,7 @@ out <- rFunction(
   keepAllCols = TRUE
 )
 
+
 out <- rFunction(
   data = test_dt$wcs,
   travelcut = 3,
@@ -114,6 +121,45 @@ out <- rFunction(
   altbound = 25,
   keepAllCols = TRUE
 )
+
+
+
+
+
+# Test 3-month worth of data
+
+out <- rFunction(
+  data = test_dt_3mths$nam_3mths,
+  travelcut = 3,
+  create_plots = FALSE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25
+)
+
+
+mod_out <- speed_time_model(
+  dt = out |> filter(individual_name_deployment_id == "GA_5404..deploy_id.1080727521."), 
+  model_obj = TRUE, 
+  void_non_converging = TRUE)
+
+
+out <- rFunction(
+  data = test_dt_3mths$savahn_3mths,
+  travelcut = 3,
+  create_plots = FALSE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25
+)
+
+
+mod_out <- speed_time_model(
+  dt = out |> filter(individual_name_deployment_id == "SAV.4360.A..deploy_id.2601766196."), 
+  model_obj = TRUE, 
+  void_non_converging = TRUE)
+
+
 
 
 
@@ -205,7 +251,43 @@ mod_out <- speed_time_model(track_dt |> filter(track == "A234556..deploy_id.2153
 mod_out <- speed_time_model(track_dt |> filter(track == "A116514..deploy_id.1935590050."), model_obj = TRUE, void_non_converging = TRUE)
 
 
+
+out <- rFunction(
+  data = test_dt$gaia,
+  travelcut = 3,
+  create_plots = TRUE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = TRUE
+)
+
+mod_out <- speed_time_model(
+  dt = out |> filter(track == "V012"), 
+  model_obj = TRUE, 
+  void_non_converging = TRUE)
+
+
+
+out <- rFunction(
+  data = test_dt$wb_zam_knd,
+  travelcut = 3,
+  create_plots = TRUE,
+  sunrise_leeway = 0,
+  sunset_leeway = 0,
+  altbound = 25,
+  keepAllCols = TRUE
+)
+
+mod_out <- speed_time_model(
+  dt = out |> filter(track == "A234560..deploy_id.2388615406."), 
+  model_obj = TRUE, 
+  void_non_converging = TRUE)
   
+
+
+
+
 
 
 # nam_sop: "GA_6594" (runSALSA1D error)
