@@ -1084,180 +1084,80 @@ speed_time_model <- function(dt,
       splines = c("ns"),
       cv.opts=list(cv.gamMRSea.seed=357, K=5) 
     )
-    
-    # run SALSA
-    non_conv_warn <- FALSE
-    fit <- rlang::try_fetch(
 
-      suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
-
-        runSALSA1D(
-          initialModel,
-          salsa1dlist,
-          varlist=c("hrs_since_sunrise"),
-          splineParams=NULL,
-          datain=newdat,
-          predictionData = filter(dt, !is.na(kmph)),
-          panelid = newdat$yearmonthday,
-          suppress.printout = TRUE)$bestModel
-      ),
-
-      error = \(cnd){
-        # needed to handle unclosed connection in some error cases of runSALSA1D
-        if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
-        logger.warn(
-          paste0(
-            "      |x Ouch!! Something went wrong while fitting the model.\n",
-            "             |x `runSALSA1D()` returned the following error message:\n",
-            "             |x \"", conditionMessage(cnd), "\"\n",
-            "             |x Speed-time classification will be attempted using log-Gaussian model."
-          ))
-        return(NULL)
-      },
-
-      # In addition, muffle warnings related with non-converging glm fits, which
-      # are dealt with next
-      warning = \(cnd){
-        if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
-          non_conv_warn <<- TRUE
-          rlang::cnd_muffle(cnd)
-        }
-        rlang::zap()
-      }
+        # run SALSA with Gamma
+    fit <- fit_SALSA(
+      initialModel = initialModel, 
+      salsa1dlist = salsa1dlist,
+      varlist=c("hrs_since_sunrise"),
+      fittingData = newdat,
+      predictionData = filter(dt, !is.na(kmph)),
+      panelid = newdat$yearmonthday,
+      void_non_converging = void_non_converging,
+      logger_failure_msg = "Fitting a log-Gaussian model."
     )
-    
-
-    # Handling non-converging warnings in model fitting. If sense check on 
-    # model term p-values fails (i.e. any nonsensical pvalues of < 1e-100),
-    # invalidate speed-time classification (when option `void_non_converging` is TRUE)
-    if(not_null(fit) & non_conv_warn == TRUE & void_non_converging == TRUE){
-      bad_fit <- fit$converged
-      if(bad_fit == FALSE){
-        logger.warn(
-                  paste0(
-                    "      |x Aargh!! Convergence issues found during model fitting.\n",
-                    "             |x Speed-time classification to be tried using log-Gaussian approach."
-                  ))
-
-        fit <- NULL
-        
-      }else{
-        
-        if(length(unique(dt$day30window))>1){
-          fit.int <- try(update(fit, . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots,  Boundary.knots = splineParams[[2]]$bd):as.factor(day30window)), silent= TRUE)
-          if(!inherits(fit.int, "try-error")){
-            BICfits <- c(BIC(fit), BIC(fit.int))
-            bicid <- which(BICfits == min(BICfits))
-            if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
-              fit <- fit.int
-              logger.warn(
-                paste0(
-                  "      |x Interaction Model performs best \n",
-                  "             |x "
-                ))
-            }
-          } # end try-error loop
-            
-        } # end interaction loop
-      }
-    }
+                         
+   
+   
+    #' ------------------------------------------
+    # Try alternative log-Gaussian model
     
     if(is.null(fit)){
       initialModel <- suppressWarnings(
         glm(response  ~ 1 , family = gaussian(link="log"), data = newdat)
       )
       
-      salsa1dlist <- list(
-        fitnessMeasure = 'BIC',
-        minKnots_1d = c(1),
-        maxKnots_1d = c(5),
-        startKnots_1d = c(1),
-        degree = c(2),
-        maxIterations = 10,
-        gaps = c(1.5),
-        splines = c("ns"),
-        cv.opts=list(cv.gamMRSea.seed=357, K=5) 
+      fit <- fit_SALSA(
+        initialModel = initialModel, 
+        salsa1dlist = salsa1dlist,
+        varlist=c("hrs_since_sunrise"),
+        fittingData = newdat,
+        predictionData = filter(dt, !is.na(kmph)),
+        panelid = newdat$yearmonthday,
+        void_non_converging = void_non_converging,
+        logger_failure_msg = "Speed-time classification will not be applied to this track."
       )
-      
-      # run SALSA
-      non_conv_warn <- FALSE
-      fit <- rlang::try_fetch(
-        
-        suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
-          
-          runSALSA1D(
-            initialModel,
-            salsa1dlist,
-            varlist=c("hrs_since_sunrise"),
-            splineParams=NULL,
-            datain=newdat,
-            predictionData = filter(dt, !is.na(kmph)),
-            panelid = newdat$yearmonthday,
-            suppress.printout = TRUE)$bestModel
-        ),
-        
-        error = \(cnd){
-          # needed to handle unclosed connection in some error cases of runSALSA1D
-          if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
-          logger.warn(
-            paste0(
-              "      |x Ouch!! Something went wrong while fitting the model.\n",
-              "             |x `runSALSA1D()` returned the following error message:\n",
-              "             |x \"", conditionMessage(cnd), "\"\n",
-              "             |x Speed-time classification will not be applied to this track."
-            ))
-          return(NULL)
-        },
-        
-        # In addition, muffle warnings related with non-converging glm fits, which
-        # are dealt with next
-        warning = \(cnd){
-          if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
-            non_conv_warn <<- TRUE
-            rlang::cnd_muffle(cnd)
-          }
-          rlang::zap()
-        }
-      )
-      
-      # Handling non-converging warnings in model fitting. If sense check on 
-      # model term p-values fails (i.e. any nonsensical pvalues of < 1e-100),
-      # invalidate speed-time classification (when option `void_non_converging` is TRUE)
-      if(not_null(fit) & non_conv_warn == TRUE & void_non_converging == TRUE){
-        bad_fit <- fit$converged
-        if(bad_fit==FALSE){
-          logger.warn(
-            paste0(
-              "      |x Aargh!! Convergence issues found during model fitting.\n",
-              "             |x Speed-time classification will not be applied to this track."
-            ))
-          fit <- NULL
-        }else{
-          if(length(unique(dt$day30window))>1){
-            fit.int <- try(update(fit, . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots,  Boundary.knots = splineParams[[2]]$bd):as.factor(day30window)), silent= TRUE)
-            if(!inherits(fit.int, "try-error")){
-              BICfits <- c(BIC(fit), BIC(fit.int))
-              bicid <- which(BICfits == min(BICfits))
-              if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
-                fit <- fit.int
-                logger.warn(
-                  paste0(
-                    "      |x Interaction Model performs best \n",
-                    "             |x "
-                  ))
-              }
-            } # end try-error loop
-            
-          } # end interaction loop
-        }
-      }
-      
     }
+
     
-    
+    #' ----------------------------------------------------------------
+    #' If simpler model fitted successfully, re-fit model with a 30-day window
+    #' interaction term (conditional on over 30 days of data available)
+    if(not_null(fit) & length(unique(dt$day30window))>1){
+      
+      #print("here")
+      
+      # HACK: need to temporarily copy as `fittingData`, so that `update` works
+      fittingData <- newdat
+      
+      fit.int <- try(
+        update(
+          fit,
+          . ~. + ns(hrs_since_sunrise, knots = splineParams[[2]]$knots, Boundary.knots = splineParams[[2]]$bd):as.factor(day30window)
+        ), 
+        silent= TRUE)
+      
+      # remove temporary data
+      rm(fittingData)
+      
+      if(!inherits(fit.int, "try-error")){
+        BICfits <- c(BIC(fit), BIC(fit.int))
+        bicid <- which(BICfits == min(BICfits))
+        if(bicid == 2 & (BICfits[1] - BICfits[2] > 2)){
+          fit <- fit.int
+          logger.info(
+            paste0(
+              "      |> The 30-day-window interaction model outperforms the simpler non-interaction model.\n",
+              "             |> Using the interaction model for speed-time classification."
+            ))
+        }
+      } # end try-error conditional
+    } # end interaction 
   }
   
-  
+  #' -------------------------------------------------------------------
+  #' If models have been fitted successfully, calculate confidence intervals and
+  #' generate diagnostic plots
   if(not_null(fit)){
     
     # NOTE: Predicting to full dataset for convenience in data wrangling - i.e. no 
@@ -1352,11 +1252,13 @@ speed_time_model <- function(dt,
       )
   }
   
+  # drop generated col identifying 30-day windows
+  dt <- dplyr::select(dt, -any_of("day30window"))
+  
   # Update progress bar, if active
   if(not_null(pb)){
     pb()  
   }
-  
   
   if(model_obj){
     return(list(dt = dt, fit = fit))
@@ -1366,6 +1268,80 @@ speed_time_model <- function(dt,
   
 }
 
+
+
+
+
+#' /////////////////////////////////////////////////////////////////////////////////////////////
+#' Wrapper for SALSA1D fitting, with handling of fitting rrors and non-convergence issues
+#' 
+fit_SALSA <- function(initialModel, 
+                      salsa1dlist, 
+                      fittingData, 
+                      predictionData,
+                      varlist,
+                      panelid = panelid,
+                      void_non_converging,
+                      logger_failure_msg){
+  
+  non_conv_warn <- FALSE
+  fit <- rlang::try_fetch(
+    
+    suppressPackageStartupMessages( # prevent dependency loading msgs on workers' launch
+      
+      runSALSA1D(
+        initialModel = initialModel,
+        salsa1dlist = salsa1dlist, 
+        varlist = varlist,
+        splineParams=NULL,
+        datain = fittingData,
+        predictionData = predictionData,
+        panelid = panelid,
+        logfile = FALSE,
+        suppress.printout = TRUE)$bestModel
+    ),
+    
+    error = \(cnd){
+      # needed to handle unclosed connection in some error cases of runSALSA1D
+      if(conditionMessage(cnd) == "NA/NaN/Inf in 'x'") sink()
+      logger.warn(
+        paste0(
+          "      |x Ouch!! Something went wrong while fitting the model.\n",
+          "             |x `runSALSA1D()` returned the following error message:\n",
+          "             |x \"", conditionMessage(cnd), "\"\n",
+          "             |i ", logger_failure_msg
+        ))
+      return(NULL)
+    },
+    
+    # In addition, muffle warnings related with non-converging glm fits, which
+    # are dealt with next
+    warning = \(cnd){
+      if(conditionMessage(cnd) == "glm.fit: algorithm did not converge"){
+        non_conv_warn <<- TRUE
+        rlang::cnd_muffle(cnd)
+      }
+      rlang::zap()
+    }
+  )
+  
+  # Handling non-converging warnings in fitting of log-Gaussian model.
+  if(not_null(fit) & non_conv_warn == TRUE & void_non_converging == TRUE){
+    
+    #' Refute model if in-built diagnostic indicates non-convergence, 
+    #' and consequently nullify fitted model object
+    if(fit$converged==FALSE){
+      logger.warn(
+        paste0(
+          "      |x Aargh!! Convergence issues found during model fitting.\n",
+          "             |i ", logger_failure_msg
+        )
+      )
+      fit <- NULL
+    }}
+  
+  return(fit)
+}
 
 
 
