@@ -101,7 +101,7 @@ Move2 location object, with the following key columns in the event dataset:
 
 -   This MoveApp is designed for species that roost at night. If the species is nocturnal, classifications will be inaccurate or unable to be calculated.
 
--   This App relies completely on eApp ['Add Local and Solar Time MoveApp'](https://github.com/movestore/Convert-Times/tree/20a1370a9cc3668a2e2034eb49d4155038cb2182) being deployed earlier in the Workflow to ensure essential columns  `sunrise_timestamp` and `sunset_timestamp` available for the classification process. If these columns are not detected in the input dataset, the App will exit abruptly and throw an error.
+-   This App relies completely on App ['Add Local and Solar Time MoveApp'](https://github.com/movestore/Convert-Times/tree/20a1370a9cc3668a2e2034eb49d4155038cb2182) being deployed earlier in the Workflow to ensure essential columns  `sunrise_timestamp` and `sunset_timestamp` available for the classification process. If these columns are not detected in the input dataset, the App will exit abruptly and throw an error.
 
 
 ### Null or error handling
