@@ -44,8 +44,11 @@ If altitude information is available, reclassification is performed. This requir
 
 ### MoveApps Worflow Dependencies
 
-This App is strictly dependent on the prior deployment of the App ['Add Local and Solar Time'](https://www.moveapps.org/apps/browser/43272925-cd24-466f-bcb9-844a09f1806b) ([Readme](https://github.com/movestore/Convert-Times)) in the workflow.
+- This App is strictly dependent on the prior deployment of the App ['Add Local and Solar Time'](https://www.moveapps.org/apps/browser/43272925-cd24-466f-bcb9-844a09f1806b) ([GitHub](https://github.com/movestore/Convert-Times)) in the workflow.
 
+- Accelerometer (ACC) data, when available for a given animal, plays a key role in identifying feeding behaviour during the classification process. To integrate ACC data into the classification, ensure that the App ['Fetch and Merge Accelerometer data to Locations'](https://www.moveapps.org/apps/browser/2bf78311-45a3-4d7c-8889-bd211cb38c25) ([GitHub](https://github.com/dmpstats/Fetch_and_Merge_Acceleration_to_Locations)) is deployed earlier in the workflow.
+
+- Likewise, altitude data, when available, helps differentiate between travelling and stationary events. Ensure that the App ['Standardise Formats and Calculate Basic Statistics'](https://www.moveapps.org/apps/browser/301544a1-3cb8-48ce-b8cf-fa9d8535676b) ([GitHub](https://github.com/dmpstats/Standardise_Formats_and_Calculate_Basic_Statistics)) is deployed earlier in the workflow to accurately identify the column `altitude` in the input data.
 
 
 ### Input data
