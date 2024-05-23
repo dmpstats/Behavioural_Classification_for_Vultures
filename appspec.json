@@ -97,13 +97,7 @@
         "name": "patchwork"
       },
       {
-        "name": "splines"
-      },
-      {
         "name": "rlang"
-      },
-      {
-        "name": "grid"
       },
       {
         "name": "sandwich"

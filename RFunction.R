@@ -15,8 +15,8 @@ library("furrr")
 library("future")
 library("progressr")
 library("patchwork")
-library("splines")
-library("rlang")
+#library("splines")
+#library("rlang")
 library("grid")
 library("sandwich") # undisclosed dependency of MRSea
 
