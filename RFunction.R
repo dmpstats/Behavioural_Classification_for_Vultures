@@ -39,7 +39,7 @@ rFunction = function(data,
   #' 
   #'   - make use of 'dplyr::' consistent
   #'   - drop "ID" and "timestamp" redefinition and use "mt_" functions instead
-  #'   - improve error messages with {rlang}
+  #'   - improve error messages with {cli}
   
   
   ## Globals --------------------------------------
@@ -671,8 +671,7 @@ rFunction = function(data,
     logger.trace("Removing all nonessential columns")
     data %<>% dplyr::select(-any_of(
       c(
-        "timestamp_local", "local_tz", "ID", "altdiff", 
-        "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", 
+        "ID", "altdiff", "endofday", "endofday_dist_m", "roostsite", "travel01", "cum_trav", "revcumtrav", 
         "roostgroup", "stationaryNotRoost", "stationary_runLts", "cumtimestat", 
         "cumtimestat_pctl", "kmphCI2.5", "kmphpreds",
         "revcum_trav", "runtime", "dayRunThresh"
