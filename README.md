@@ -78,6 +78,7 @@ Move2 location object, with the following key columns in the event dataset:
   
   2. *speed_hrs_diagnostics - (track ID).png* - a set of diagnostic plots assessing the fitted model describing the stationary-speed given hours-since-sunrise relationship required for the speed-time classification step.
 
+<!-- IMPORTANT: diagnostic plots also need to be described here -->
 
 
 ### Settings

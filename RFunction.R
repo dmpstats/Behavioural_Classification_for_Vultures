@@ -1137,7 +1137,13 @@ speed_time_model <- function(dt,
           logger.info(
             paste0(
               "      |> The 30-day-window interaction model outperforms the simpler non-interaction model.\n",
-              "             |> Using the interaction model for speed-time classification."
+              "             |i Using the interaction model for speed-time classification."
+            ))
+        }else{
+          logger.info(
+            paste0(
+              "      |> The 30-day-window interaction model underperforms the simpler non-interaction model.\n",
+              "             |i Sticking with the simpler, no temporal effect, model for speed-time classification."
             ))
         }
       } # end try-error conditional
