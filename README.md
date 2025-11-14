@@ -56,10 +56,15 @@ flowchart LR
     class ROOST,TRAVL,FEED,REST final
 ```
 
-variance in \#’ acceleration to the next location exceeds the 95th
-percentile of \#’ acceleration variation values during night-time
-roosting, in any of the \#’ active accelerometer axis. Percentile
-thresholds are calculated for each \#’ individual from input data.
+<!--   #' variance in -->
+
+<!--   #' acceleration to the next location exceeds the 95th percentile of -->
+
+<!--   #' acceleration variation values during night-time roosting, in any of the -->
+
+<!--   #' active accelerometer axis. Percentile thresholds are calculated for each -->
+
+<!--   #' individual from input data. -->
 
 ### MoveApps Worflow Dependencies
 
