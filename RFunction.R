@@ -516,7 +516,7 @@ rFunction = function(data,
   progressr::with_progress({
     # initiate progress signaler
     pb <- progressr::progressor(steps = mt_n_tracks(data))
-    
+
     data <- data |>
       group_by(ID) |>
       dplyr::group_split() |>
@@ -1054,15 +1054,9 @@ speed_time_model <- function(dt,
         stationary == 1
       )
     
+    #browser()
     
-    #' ----------------------------------------------------
-    #' Start off with a Gamma link, without accounting for 30-day window
-    #' heterogeneity in relationship
-    
-    initialModel <- suppressWarnings(
-      glm(response  ~ 1 , family = Gamma(link="log"), data = newdat)
-    )
-    
+    # define SALSA settings
     salsa1dlist <- list(
       fitnessMeasure = 'BIC',
       minKnots_1d = c(1),
@@ -1074,29 +1068,21 @@ speed_time_model <- function(dt,
       splines = c("ns"),
       cv.opts=list(cv.gamMRSea.seed=357, K=5) 
     )
-
-        # run SALSA with Gamma
-    fit <- fit_SALSA(
-      initialModel = initialModel, 
-      salsa1dlist = salsa1dlist,
-      varlist=c("hrs_since_sunrise"),
-      fittingData = newdat,
-      predictionData = filter(dt, !is.na(kmph)),
-      panelid = newdat$yearmonthday,
-      void_non_converging = void_non_converging,
-      logger_failure_msg = "Fitting a log-Gaussian model."
-    )
-                         
-   
-   
-    #' ------------------------------------------
-    # Try alternative log-Gaussian model
     
-    if(is.null(fit)){
-      initialModel <- suppressWarnings(
-        glm(response  ~ 1 , family = gaussian(link="log"), data = newdat)
-      )
-      
+    #' ----------------------------------------------------
+    #' Start off with a Gamma link, without accounting for 30-day window
+    #' heterogeneity in relationship
+    
+    initialModel <- fit_init(
+      data = newdat,
+      family = Gamma(link="log"),
+      fail_msg = "Fitting a log-Gaussian model instead."
+    )
+    
+    if(is.null(initialModel)){ # skips SALSA fitting as base model already failed
+      fit <- NULL
+    } else{
+      # run SALSA with Gamma
       fit <- fit_SALSA(
         initialModel = initialModel, 
         salsa1dlist = salsa1dlist,
@@ -1105,8 +1091,36 @@ speed_time_model <- function(dt,
         predictionData = filter(dt, !is.na(kmph)),
         panelid = newdat$yearmonthday,
         void_non_converging = void_non_converging,
-        logger_failure_msg = "Speed-time classification will not be applied to this track."
+        logger_failure_msg = "Fitting a log-Gaussian model instead."
       )
+    }
+   
+   
+    #' ------------------------------------------
+    # Try alternative log-Gaussian model
+    
+    if(is.null(fit)){
+      
+      initialModel <- fit_init(
+        data = newdat, 
+        family = gaussian(link="log"), 
+        fail_msg = "Speed-time classification will not be applied to this track."
+      )
+      
+      if(is.null(initialModel)){
+        fit <- NULL
+      } else{
+        fit <- fit_SALSA(
+          initialModel = initialModel, 
+          salsa1dlist = salsa1dlist,
+          varlist=c("hrs_since_sunrise"),
+          fittingData = newdat,
+          predictionData = filter(dt, !is.na(kmph)),
+          panelid = newdat$yearmonthday,
+          void_non_converging = void_non_converging,
+          logger_failure_msg = "Speed-time classification will not be applied to this track."
+        )  
+      }
     }
 
     
@@ -1198,7 +1212,7 @@ speed_time_model <- function(dt,
       #' Next graph involves model updating to more flexible predictor, so
       #' refitting brings new issues at times. Handling errors and non-convergence
       #' warnings by skipping the plotting.
-      p_cmltv_rsd <- try_fetch(
+      p_cmltv_rsd <- rlang::try_fetch(
         plot_cmltv_resids(fit, varlist = "hrs_since_sunrise", variableonly = TRUE, print = FALSE),
         error = \(cnd) grid::textGrob('Cumulative Residuals Plot Not Available'),
         warning = \(cnd){
@@ -1219,12 +1233,13 @@ speed_time_model <- function(dt,
           plot.tag = element_text(size = 9)
         )
       
-      
       ggplot2::ggsave(
-        filename = appArtifactPath(paste0("speed_hrs_diagnostics - ", id, ".png")),
-        plot = p_diags, 
+        filename = appArtifactPath(paste0("speed_hrs_diagnostics - ", id, ".png")), 
+        plot = p_diags,
+        device = "png", 
         height = 10, width = 11
       )
+      
     }
     
   } else{
@@ -1256,6 +1271,27 @@ speed_time_model <- function(dt,
 
 
 
+#' //////////////////////////////////////////////////////////////////////////////
+#' Wrapper for fitting the initial glm, for handling fitting errors 
+fit_init <- function(data, family, fail_msg){
+  
+  suppressWarnings(
+    rlang::try_fetch(
+      glm(response ~ 1, family = family, data = data),
+      error =  \(cnd){
+        logger.warn(
+          paste0(
+            "      |x Ouch!! Something went wrong while fitting the model.\n",
+            "             |x `glm()` returned the following error message:\n",
+            "             |x \"", conditionMessage(cnd), "\"\n",
+            "             |i ", fail_msg
+          ))
+        NULL
+      }
+    )
+  )
+    
+}
 
 
 #' /////////////////////////////////////////////////////////////////////////////////////////////
