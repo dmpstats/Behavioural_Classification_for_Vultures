@@ -16,7 +16,7 @@ library("future")
 library("progressr")
 library("patchwork")
 #library("splines")
-#library("rlang")
+library("rlang")
 library("grid")
 library("sandwich") # undisclosed dependency of MRSea
 
@@ -433,7 +433,7 @@ rFunction = function(data,
   #' identified as part of a roosting-site, which is defined as:
   #' 
   #' Consecutive stationary locations (`roostgroup`) encompassing night-time
-  #' locations with total overnight distance traveled less than 15 meters
+  #' locations with total overnight distance travelled less than 15 meters
   #' (`roostsite`)
   #' 
   #' NOTE: STravelling locations not affected by this step, even if they were
@@ -526,13 +526,14 @@ rFunction = function(data,
         ),
         .options = furrr_options(
           seed = TRUE,
-          packages = c("move2", "sf", "MRSea", "dplyr", "lubridate", "rlang",
+          conditions = character(), 
+          packages = c("move2", "MRSea", "dplyr", "lubridate", "rlang",
           "purrr", "patchwork", "ggplot2", "grid")
         )
       ) |>
       mt_stack()
   })
-  
+
   future::plan("sequential")
   
   # data <- data |>
@@ -942,7 +943,7 @@ speed_time_model <- function(dt,
                              model_obj = FALSE
                              ){
   
- # browser()
+  #browser()
   
   id <- mt_track_id(dt) |> unique() |> as.character()
   
