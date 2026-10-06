@@ -507,46 +507,91 @@ rFunction = function(data,
   logger.info(" |- Deriving thresholds for stationary-speed given hours-since-sunrise.")
   
   progressr::handlers("cli")
-  
-  #' setting parallel processing using availableCores() to set # workers.
-  #' {future} imports that function from {parallelly}, which is safe to use in
-  #' container environments (e.g. Docker)
-  future::plan("cluster", workers = future::availableCores(omit = 1))
-  
+
+  #' Create the PSOCK cluster with base {parallel} rather than letting {future}
+  #' build it via {parallelly}. parallelly::makeClusterPSOCK() records sys.calls()
+  #' into each node's 'calls' attribute; when rFunction() is invoked via do.call()
+  #' (as the MoveApps SDK does), that call stack embeds the full input data object
+  #' in every node, so future's uuid() step tries to serialize gigabytes and fails
+  #' with "long vectors not supported". base::makeCluster() does not capture the
+  #' call stack, so the cluster stays tiny and serializes fine. This keeps {furrr}
+  #' (progress bar, seeding, package export) and works on Windows and Linux alike.
+  #' {parallelly}'s availableCores() is safe in container environments (Docker).
+  cl <- parallel::makeCluster(future::availableCores(omit = 1))
+  on.exit(
+    {
+      future::plan("sequential")
+      try(parallel::stopCluster(cl), silent = TRUE)
+    },
+    add = TRUE
+  )
+  future::plan("cluster", workers = cl)
+
   progressr::with_progress({
-    # initiate progress signaler
+    # initiate progress signaller
     pb <- progressr::progressor(steps = mt_n_tracks(data))
+
+    #' Build the per-track worker in a minimal environment (parent = globalenv)
+    #' so {furrr} does not serialize rFunction()'s whole frame to every worker.
+    #' A formula/lambda defined here would close over this frame, which holds the
+    #' full `data`; future would then ship the entire dataset to each
+    #' worker on top of its own chunk. Capturing only `pb` and `create_plots`
+    #' means each worker receives just its group plus these small objects.
+    worker_env <- new.env(parent = globalenv())
+    worker_env$pb <- pb
+    worker_env$create_plots <- create_plots
+    speed_time_worker <- function(.x) {
+      speed_time_model(
+        .x,
+        pb = pb,
+        diag_plots = create_plots,
+        void_non_converging = TRUE
+      )
+    }
+    environment(speed_time_worker) <- worker_env
 
     data <- data |>
       group_by(ID) |>
       dplyr::group_split() |>
       furrr::future_map(
-        .f = ~speed_time_model(
-          .x, pb = pb, diag_plots = create_plots, void_non_converging = TRUE
-        ),
+        .f = speed_time_worker,
         .options = furrr_options(
           seed = TRUE,
-          conditions = character(), 
-          packages = c("move2", "MRSea", "dplyr", "lubridate", "rlang",
-          "purrr", "patchwork", "ggplot2", "grid")
+          conditions = character(),
+          packages = c(
+            "move2",
+            "MRSea",
+            "dplyr",
+            "lubridate",
+            "rlang",
+            "purrr",
+            "patchwork",
+            "ggplot2",
+            "grid",
+            "tidyr"
+          )
         )
       ) |>
       mt_stack()
   })
 
+  # Reset plan and shut down the cluster (also handled by on.exit on error)
   future::plan("sequential")
-  
+  try(parallel::stopCluster(cl), silent = TRUE)
+
   # data <- data |>
   #   group_by(ID) |>
   #   dplyr::group_split() |>
   #   purrr::map(
-  #     .f = ~speed_time_model(
-  #       .x, pb = NULL, diag_plots = create_plots, void_non_converging = TRUE
+  #     .f = ~ speed_time_model(
+  #       .x,
+  #       pb = NULL,
+  #       diag_plots = create_plots,
+  #       void_non_converging = TRUE
   #     )
   #   ) |>
   #   mt_stack()
-  
-  
+
   #### [6.2] Apply speed-time rule  ----------------
   logger.info(" |- Apply speed-time rule")
   
