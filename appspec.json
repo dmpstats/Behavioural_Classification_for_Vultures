@@ -82,7 +82,7 @@
         "name": "zoo"
       },
       {
-        "name": "MRSea"
+        "remotes": "install_github('lindesaysh/MRSea', ref='stable')"
       },
       {
         "name": "furrr"
@@ -98,9 +98,6 @@
       },
       {
         "name": "rlang"
-      },
-      {
-        "name": "grid"
       },
       {
         "name": "sandwich"
