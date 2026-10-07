@@ -17,7 +17,6 @@ library("progressr")
 library("patchwork")
 #library("splines")
 library("rlang")
-library("grid")
 library("sandwich") # undisclosed dependency of MRSea
 
 `%!in%` <- Negate(`%in%`)
@@ -1467,11 +1466,17 @@ speed_time_model <- function(
     # build diagnostic plots and export as artifacts
     if (diag_plots) {
       p_fit <- plot_model_fit(dt, fit)
-      p_acf <- MRSea::runACF(
-        newdat$yearmonthday,
-        fit,
-        suppress.printout = TRUE,
-        printplot = FALSE
+      #' MRSea::runACF() prints its plot regardless of `printplot = FALSE`
+      #' (its internal plotacf() ends in print()). On a parallel worker this
+      #' opens (and leaves open) the default pdf device, which future flags.
+      #' Route the print through a null device; the plot object is still returned.
+      p_acf <- with_null_device(
+        MRSea::runACF(
+          newdat$yearmonthday,
+          fit,
+          suppress.printout = TRUE,
+          printplot = FALSE
+        )
       )
       #p_acf <- plot_acf(fit)
       p_resids <- plot_diagnostics(fit, plotting = "r", print = FALSE)
@@ -1659,6 +1664,15 @@ fit_SALSA <- function(
 
 
 #' /////////////////////////////////////////////////////////////////////////////////////////////
+#' Evaluate `expr` with graphics directed to a null device, then close it.
+#' Used to swallow stray print() calls from third-party plotting code when
+#' running inside future/furrr workers.
+with_null_device <- function(expr) {
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  force(expr)
+}
+
 plot_model_fit <- function(dt, fit) {
   int <- ifelse(length(grep("day30window", fit$call)) == 1, TRUE, FALSE)
 
